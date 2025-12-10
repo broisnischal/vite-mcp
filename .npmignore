@@ -1,0 +1,35 @@
+# Source files
+src/
+tsconfig.json
+tsconfig.tsbuildinfo
+tsup.config.ts
+
+# Development files
+playground/
+.github/
+.changeset/
+
+# Build artifacts (we publish dist/)
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Testing
+*.test.ts
+*.spec.ts
+coverage/
+
+# Documentation (optional - remove if you want to publish README)
+# README.md
+
+# CI/CD
+.github/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
