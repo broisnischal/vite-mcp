@@ -1,3 +1,5 @@
+## UNDER_DEVELOPMENT
+
 # vite-mcp
 
 A Vite plugin that provides Model Context Protocol (MCP) server capabilities for Vite development, enabling MCP clients to interact with browser environments through adapters.

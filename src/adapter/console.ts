@@ -1,3 +1,4 @@
+
 import { z } from 'zod';
 import type { AdapterDefinition } from './types.js';
 
