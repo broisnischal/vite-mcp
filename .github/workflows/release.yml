@@ -27,11 +27,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Install Dependencies
-        run: |
-          # Use npm install to ensure optional dependencies are installed
-          npm install
-          # Verify rollup native module is available
-          npm list @rollup/rollup-linux-x64-gnu || echo "Rollup native module check skipped"
+        run: npm install
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
