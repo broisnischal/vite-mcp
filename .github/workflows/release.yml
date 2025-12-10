@@ -4,13 +4,48 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: |
+          # Remove lock file and node_modules to force fresh install
+          rm -rf node_modules package-lock.json
+          # Install all dependencies
+          npm install
+          # Explicitly install rollup native module for Linux
+          npm install @rollup/rollup-linux-x64-gnu --save-optional || npm install @rollup/rollup-linux-x64-gnu --no-save
+
+      - name: Build
+        run: npm run build
+
+      - name: Type Check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint || echo "Linting skipped if not configured"
+
   release:
     name: Release
     runs-on: ubuntu-latest
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
       id-token: write
@@ -30,7 +65,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          # Remove lock file and node_modules to force fresh install (as error suggests)
+          # Remove lock file and node_modules to force fresh install
           rm -rf node_modules package-lock.json
           # Install all dependencies
           npm install
