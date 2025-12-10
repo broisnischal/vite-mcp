@@ -54,10 +54,11 @@ export class ViteMcpServer {
     }
 
     async handleHTTP(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        res.setHeader('Content-Type', 'application/json');
+        // Set CORS headers
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, mcp-session-id, Last-Event-ID, Authorization');
+        res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
 
         if (req.method === 'OPTIONS') {
             res.writeHead(200);
@@ -67,6 +68,7 @@ export class ViteMcpServer {
 
         if (req.method === 'GET') {
             // Return server info
+            res.setHeader('Content-Type', 'application/json');
             res.writeHead(200);
             res.end(
                 JSON.stringify({
@@ -107,6 +109,22 @@ export class ViteMcpServer {
         }
 
         // Handle the request
+        // If Accept header is not set, set it to accept both JSON and SSE
+        if (!req.headers.accept) {
+            req.headers.accept = 'application/json, text/event-stream';
+        } else if (!req.headers.accept.includes('application/json') || !req.headers.accept.includes('text/event-stream')) {
+            // Ensure both are accepted
+            const accept = req.headers.accept;
+            let newAccept = accept;
+            if (!accept.includes('application/json')) {
+                newAccept += ', application/json';
+            }
+            if (!accept.includes('text/event-stream')) {
+                newAccept += ', text/event-stream';
+            }
+            req.headers.accept = newAccept;
+        }
+
         let body = '';
         req.on('data', (chunk: Buffer) => {
             body += chunk.toString();
@@ -117,8 +135,11 @@ export class ViteMcpServer {
                 const message = body ? JSON.parse(body) : undefined;
                 await transport.handleRequest(req, res, message);
             } catch (error) {
-                res.writeHead(500);
-                res.end(JSON.stringify({ error: String(error) }));
+                if (!res.headersSent) {
+                    res.writeHead(500);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ error: String(error) }));
+                }
             }
         });
 

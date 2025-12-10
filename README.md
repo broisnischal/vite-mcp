@@ -85,6 +85,17 @@ npm run build
 npm run dev
 ```
 
+## Testing
+
+See [TESTING.md](./TESTING.md) for comprehensive testing instructions.
+
+Quick test:
+1. Start the playground: `cd playground && npm run dev`
+2. Open `http://localhost:5200` in a browser
+3. Run the test script: `npm run test:mcp`
+
+Or use online tools like [MCP Playground](https://mcpplaygroundonline.com) to test the MCP server at `http://localhost:5200/__mcp`.
+
 ## License
 
 MIT

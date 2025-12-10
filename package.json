@@ -27,6 +27,7 @@
     "dev": "tsup --watch",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "test:mcp": "tsx test-mcp-client.ts",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "npm install && npm run build && changeset publish"
@@ -43,6 +44,7 @@
     "@types/bun": "latest",
     "@types/node": "^24.3.0",
     "tsup": "^8.5.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.9.0-beta",
     "vite": "^7.2.7"
   },

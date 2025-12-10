@@ -59,8 +59,34 @@ export function viteMcp(options: ViteMcpOptions = {}): Plugin {
         const deferred = new Deferred<CallToolResult>();
         pendingToolCalls.set(id, deferred);
 
-        if (viteServer?.environments?.default?.hot) {
-            viteServer.environments.default.hot.send('mcp:tool-call', { id, name, params: params || {} });
+        // Add timeout (30 seconds)
+        const timeout = setTimeout(() => {
+            const pending = pendingToolCalls.get(id);
+            if (pending) {
+                pendingToolCalls.delete(id);
+                pending.reject(new Error('Tool call timeout: Browser bridge may not be ready. Make sure the browser page is open at http://localhost:5200'));
+            }
+        }, 30000);
+
+        // Clear timeout when resolved
+        deferred.promise.finally(() => clearTimeout(timeout));
+
+        if (viteServer?.ws) {
+            const clientCount = viteServer.ws.clients.size;
+
+            if (clientCount === 0) {
+                deferred.reject(new Error('No WebSocket clients connected. Make sure the browser page is open at http://localhost:5200'));
+                return deferred.promise;
+            }
+
+            try {
+                const payload = { id, name, params: params || {} };
+                (viteServer.ws as any).send('mcp:tool-call', payload);
+            } catch (error) {
+                deferred.reject(error instanceof Error ? error : new Error(String(error)));
+            }
+        } else {
+            deferred.reject(new Error('Vite WebSocket server is not available. Make sure the dev server is running.'));
         }
 
         return deferred.promise;
@@ -78,9 +104,38 @@ export function viteMcp(options: ViteMcpOptions = {}): Plugin {
                 adapter,
                 async (input: { [key: string]: unknown }) => {
                     try {
-                        // Validate input with Zod
                         const validatedInput = adapter.inputSchema.parse(input) as { [key: string]: unknown };
                         const result = await dispatchToolCall(adapter.name, validatedInput);
+
+                        if (result.content && result.content.length > 0 && result.content[0].type === 'text') {
+                            try {
+                                const parsed = JSON.parse(result.content[0].text);
+                                // Validate against output schema if present
+                                if (adapter.outputSchema) {
+                                    const validated = adapter.outputSchema.parse(parsed);
+                                    // When output schema is defined, return structured content
+                                    return {
+                                        structuredContent: validated as Record<string, unknown>,
+                                        content: [
+                                            {
+                                                type: 'text',
+                                                text: JSON.stringify(validated),
+                                            },
+                                        ],
+                                    };
+                                }
+                                return {
+                                    content: [
+                                        {
+                                            type: 'text',
+                                            text: JSON.stringify(parsed),
+                                        },
+                                    ],
+                                };
+                            } catch {
+                                return result;
+                            }
+                        }
                         return result;
                     } catch (error) {
                         return {
@@ -116,13 +171,16 @@ export function viteMcp(options: ViteMcpOptions = {}): Plugin {
         enforce: 'pre',
         resolveId(id: string) {
             if (id === BRIDGE_PATH) {
-                return RESOLVED_BRIDGE_ID;
+                // Return with .ts extension so Vite knows to transform TypeScript
+                return RESOLVED_BRIDGE_ID + '.ts';
             }
-            if (id === RESOLVED_BRIDGE_ID) return RESOLVED_BRIDGE_ID;
+            if (id === RESOLVED_BRIDGE_ID || id === RESOLVED_BRIDGE_ID + '.ts') {
+                return RESOLVED_BRIDGE_ID + '.ts';
+            }
             return undefined;
         },
         load(id: string) {
-            if (id === RESOLVED_BRIDGE_ID) {
+            if (id === RESOLVED_BRIDGE_ID + '.ts') {
                 const bridgePath = join(SRC_DIR, 'browser-bridge.ts');
                 if (existsSync(bridgePath)) {
                     const bridgeCode = readFileSync(bridgePath, 'utf-8');
@@ -133,56 +191,37 @@ export function viteMcp(options: ViteMcpOptions = {}): Plugin {
             return undefined;
         },
         transformIndexHtml(html: string) {
-            // Inject the browser bridge script and WebSocket bridge
-            const bridgeScript = `
-        <script type="module" src="${BRIDGE_PATH}"></script>
-        <script>
-          (function() {
-            if (import.meta.hot) {
-              window.addEventListener('mcp:bridge-ready', function() {
-                import.meta.hot.send('mcp:bridge-ready', {});
-              });
-              
-              window.addEventListener('mcp:tool-result', function(event) {
-                import.meta.hot.send('mcp:tool-result', event.detail || {});
-              });
-              
-              import.meta.hot.on('mcp:tool-call', function(data) {
-                window.dispatchEvent(new CustomEvent('mcp:tool-call', { detail: data }));
-              });
-            }
-          })();
-        </script>
-      `;
-            return html.replace(
-                '<head>',
-                `<head>${bridgeScript}`,
-            );
+            const bridgeScript = `<script type="module" src="${BRIDGE_PATH}"></script>`;
+            return html.replace('<head>', `<head>${bridgeScript}`);
         },
         configureServer(server: ViteDevServer) {
             viteServer = server;
 
-            // Listen for bridge ready event from browser via HMR
-            if (server.environments?.default?.hot) {
-                server.environments.default.hot.on('mcp:bridge-ready', () => {
-                    log('🔌 MCP Bridge ready!');
-                });
-
-                // Listen for tool results from browser
-                server.environments.default.hot.on('mcp:tool-result', (data: { id: string; result: CallToolResult }) => {
-                    const deferred = pendingToolCalls.get(data.id);
-                    if (deferred) {
-                        pendingToolCalls.delete(data.id);
-                        deferred.resolve(data.result);
-                    }
-                });
-            }
+            server.ws.on('mcp:tool-result', (data: { id: string; result?: CallToolResult; error?: unknown }) => {
+                const { id, result, error } = data;
+                const deferred = pendingToolCalls.get(id);
+                if (!deferred) {
+                    return;
+                }
+                pendingToolCalls.delete(id);
+                if (error) {
+                    deferred.reject(error);
+                } else if (result) {
+                    deferred.resolve(result);
+                } else {
+                    deferred.reject(new Error('Tool result missing both result and error'));
+                }
+            });
 
             const mcpServer = createMcpServer();
 
             // Handle MCP HTTP endpoints
-            server.middlewares.use(MCP_PATH, async (req: any, res: any, next: any) => {
-                if (req.url === MCP_PATH || req.url === `${MCP_PATH}/` || req.url?.startsWith(`${MCP_PATH}/`)) {
+            // Use a function to match the path instead of passing it directly to use()
+            server.middlewares.use(async (req: any, res: any, next: any) => {
+                // Check if the request is for the MCP endpoint
+                const url = req.url || '';
+                const pathname = url.split('?')[0];
+                if (pathname === MCP_PATH || pathname === `${MCP_PATH}/` || pathname.startsWith(`${MCP_PATH}/`)) {
                     await mcpServer.handleHTTP(req, res);
                 } else {
                     next();

@@ -1,9 +1,16 @@
 import { defineConfig } from 'vite'
-// import { ViteMcp } from '../src'
+import { consoleAdapter, cookieAdapter, localStorageAdapter, sessionAdapter, viteMcp } from '../src'
 
 export default defineConfig({
     plugins: [
-        // ViteMcp(),
+        viteMcp({
+            adapters: [
+                consoleAdapter,
+                localStorageAdapter,
+                cookieAdapter,
+                sessionAdapter,
+            ]
+        }),
     ],
     server: {
         port: 5200,

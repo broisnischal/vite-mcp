@@ -1,59 +1,51 @@
 // Browser-side bridge that listens for tool calls from the MCP server
 // via Vite's WebSocket and responds with results
 
-interface ToolCallMessage {
-  id: string;
-  name: string;
-  params?: { [key: string]: unknown };
-}
-
-interface ToolResultMessage {
-  id: string;
-  result: {
-    content: Array<{ type: string; text: string }>;
-    isError?: boolean;
-  };
-}
+// Browser-side bridge that listens for tool calls from the MCP server
 
 class BrowserBridge {
-  private isReady = false;
+  isReady = false;
 
   constructor() {
     this.setupViteWebSocket();
   }
 
-  private setupViteWebSocket() {
-    if (typeof window === 'undefined') {
+  setupViteWebSocket() {
+    if (typeof window === 'undefined' || typeof import.meta === 'undefined' || !import.meta.hot) {
       return;
     }
 
-    // Vite's WebSocket is available via import.meta.hot
-    // We'll use a custom event system to communicate
-    // The plugin will set up the WebSocket listener on the server side
-    this.isReady = true;
-    
-    // Listen for custom events from the server
-    window.addEventListener('mcp:tool-call', ((event: CustomEvent) => {
-      this.handleToolCall(event.detail as ToolCallMessage);
-    }) as EventListener);
+    const hot = import.meta.hot;
 
-    // Dispatch ready event
+    // @ts-ignore - Vite HMR custom events
+    hot.on('mcp:tool-call', (data) => {
+      if (data && typeof data === 'object' && data.id && data.name) {
+        this.handleToolCall(data);
+      }
+    });
+
+    window.addEventListener('mcp:tool-result', ((event) => {
+      // @ts-ignore - Vite HMR custom events
+      hot.send('mcp:tool-result', event.detail || {});
+    }));
+
+    this.isReady = true;
     window.dispatchEvent(new CustomEvent('mcp:bridge-ready'));
-    console.log('[MCP Bridge] Ready');
   }
 
-  private async handleToolCall(message: ToolCallMessage) {
+  // @ts-ignore
+  async handleToolCall(message) {
     const { id, name, params } = message;
-    let result: ToolResultMessage['result'];
+    let result;
 
     try {
       const data = await this.executeAdapter(name, params || {});
-
+      // Return structured content that matches the output schema
       result = {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(data, null, 2),
+            text: JSON.stringify(data),
           },
         ],
       };
@@ -69,7 +61,6 @@ class BrowserBridge {
       };
     }
 
-    // Send result back via custom event
     if (this.isReady) {
       window.dispatchEvent(new CustomEvent('mcp:tool-result', {
         detail: { id, result },
@@ -77,21 +68,34 @@ class BrowserBridge {
     }
   }
 
-  private async executeAdapter(name: string, params: { [key: string]: unknown }): Promise<unknown> {
+  // @ts-ignore
+  async executeAdapter(name, params = {}) {
     switch (name) {
       case 'read_console': {
-        let messages: Array<{ type: string; message: string; timestamp?: number }> = [];
+        // @ts-ignore
+        let messages = [];
 
         // Try to access console messages if devtools-plugin is loaded
-        if (typeof (window as any).__studioConsoleMessages !== 'undefined') {
-          messages = [...(window as any).__studioConsoleMessages];
+        // @ts-ignore
+        if (typeof window.__studioConsoleMessages !== 'undefined') {
+          // @ts-ignore
+          messages = [...window.__studioConsoleMessages];
+          // @ts-ignore
+        } else if (typeof window.__mcpConsoleMessages !== 'undefined') {
+          // Use our own console message storage
+          // @ts-ignore
+          messages = [...window.__mcpConsoleMessages];
         }
 
-        const type = params.type as string | undefined;
+        // @ts-ignore
+        const type = params.type;
         if (type) {
+          // @ts-ignore
           messages = messages.filter((m) => m.type === type);
         }
-        const limit = (params.limit as number) || 100;
+        // @ts-ignore
+        const limit = params.limit || 100;
+        // @ts-ignore
         return { messages: messages.slice(-limit) };
       }
 
@@ -131,9 +135,70 @@ class BrowserBridge {
   }
 }
 
-// Initialize the bridge when the script loads
 if (typeof window !== 'undefined') {
-  (window as any).__mcpBridge = new BrowserBridge();
+  try {
+    // @ts-ignore
+    window.__mcpBridge = new BrowserBridge();
+  } catch (error) {
+    console.error('[MCP Bridge] Failed to initialize bridge:', error);
+  }
+}
+
+// Capture console messages
+if (typeof window !== 'undefined') {
+  // @ts-ignore
+  const consoleMessages = [];
+  // @ts-ignore
+  window.__mcpConsoleMessages = consoleMessages;
+
+  const originalLog = console.log;
+  const originalInfo = console.info;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const originalDebug = console.debug;
+
+  // @ts-ignore
+  const captureMessage = (type, ...args) => {
+    const message = args.map(arg =>
+      typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+    ).join(' ');
+    consoleMessages.push({
+      type,
+      message,
+      timestamp: Date.now(),
+    });
+    // Keep only last 1000 messages
+    // @ts-ignore
+    if (consoleMessages.length > 1000) {
+      // @ts-ignore
+      consoleMessages.shift();
+    }
+  };
+
+  console.log = (...args) => {
+    captureMessage('log', ...args);
+    originalLog.apply(console, args);
+  };
+
+  console.info = (...args) => {
+    captureMessage('info', ...args);
+    originalInfo.apply(console, args);
+  };
+
+  console.warn = (...args) => {
+    captureMessage('warn', ...args);
+    originalWarn.apply(console, args);
+  };
+
+  console.error = (...args) => {
+    captureMessage('error', ...args);
+    originalError.apply(console, args);
+  };
+
+  console.debug = (...args) => {
+    captureMessage('debug', ...args);
+    originalDebug.apply(console, args);
+  };
 }
 
 export { BrowserBridge };
