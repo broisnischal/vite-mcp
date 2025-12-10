@@ -15,6 +15,7 @@ import { Deferred } from './utils.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const SRC_DIR = __dirname;
+const DIST_DIR = join(__dirname, '..', 'dist');
 
 const BRIDGE_PATH = '/@vite-mcp/bridge.js';
 const RESOLVED_BRIDGE_ID = '\0vite-mcp-bridge';
@@ -181,7 +182,11 @@ export function viteMcp(options: ViteMcpOptions = {}): Plugin {
         },
         load(id: string) {
             if (id === RESOLVED_BRIDGE_ID + '.ts') {
-                const bridgePath = join(SRC_DIR, 'browser-bridge.ts');
+                // Try dist directory first (for built packages), then fall back to src
+                const distBridgePath = join(DIST_DIR, 'browser-bridge.ts');
+                const srcBridgePath = join(SRC_DIR, 'browser-bridge.ts');
+                const bridgePath = existsSync(distBridgePath) ? distBridgePath : srcBridgePath;
+
                 if (existsSync(bridgePath)) {
                     const bridgeCode = readFileSync(bridgePath, 'utf-8');
                     // Inject web component registrations if any
