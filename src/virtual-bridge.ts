@@ -1,6 +1,7 @@
 // Virtual module for MCP Bridge
 // This can be imported in the app to access the bridge
 
+import type { BrowserBridge } from './browser-bridge.js';
 export { BrowserBridge } from './browser-bridge.js';
 
 // Re-export for convenience
