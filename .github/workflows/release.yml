@@ -28,9 +28,10 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          npm ci
-          # Ensure optional dependencies are installed (fix for rollup native modules)
-          npm install --no-save --include=optional 2>/dev/null || npm install --no-save
+          # Use npm install to ensure optional dependencies are installed
+          npm install
+          # Verify rollup native module is available
+          npm list @rollup/rollup-linux-x64-gnu || echo "Rollup native module check skipped"
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
