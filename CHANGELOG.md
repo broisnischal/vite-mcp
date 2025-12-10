@@ -1,5 +1,11 @@
 # vite-mcp
 
+## 0.1.1
+
+### Patch Changes
+
+- c1f6252: Bug fixes of browser bridge
+
 ## 0.1.0
 
 ### Minor Changes
