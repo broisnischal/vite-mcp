@@ -1,5 +1,3 @@
-## UNDER_DEVELOPMENT
-
 # vite-mcp
 
 A Vite plugin that provides Model Context Protocol (MCP) server capabilities for Vite development, enabling MCP clients to interact with browser environments through adapters.
@@ -90,6 +88,7 @@ npm run dev
 See [TESTING.md](./TESTING.md) for comprehensive testing instructions.
 
 Quick test:
+
 1. Start the playground: `cd playground && npm run dev`
 2. Open `http://localhost:5200` in a browser
 3. Run the test script: `npm run test:mcp`
