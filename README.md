@@ -179,6 +179,8 @@ Or use online tools like [MCP Playground](https://mcpplaygroundonline.com) to te
 
 _If you have suggestions for more features or use-cases, please open an issue or discussion!_
 
+### Apna College
+
 ## License
 
 MIT
