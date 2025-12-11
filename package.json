@@ -1,7 +1,7 @@
 {
   "name": "vite-mcp",
   "version": "0.1.1",
-  "description": "MCP server for Vite development",
+  "description": "MCP server for Vite development, gives your agent actual eyes inside the browser via adapters.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -51,5 +51,42 @@
   "publishConfig": {
     "access": "public"
   },
-  "private": false
+  "private": false,
+  "keywords": [
+    "mcp",
+    "vite",
+    "browser",
+    "development",
+    "tools",
+    "vite plugin",
+    "vite mcp",
+    "vite mcp adapters"
+  ],
+  "author": {
+    "name": "Nischal Dahal",
+    "email": "info@nischal-dahal.com.np",
+    "url": "https://nischal-dahal.com.np"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/broisnischal/vite-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/broisnischal/vite-mcp/issues"
+  },
+  "homepage": "https://github.com/broisnischal/vite-mcp",
+  "contributors": [
+    {
+      "name": "broisnees",
+      "email": "info@nischal-dahal.com.np",
+      "url": "https://nischal-dahal.com.np"
+    }
+  ],
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/broisnischal"
+    }
+  ]
 }
