@@ -70,30 +70,56 @@ import {
 
 The plugin exposes an MCP server at `/__mcp` endpoint. MCP clients can connect to this endpoint to interact with the browser environment.
 
-## Development
+### MCP Server Configuration
 
-```bash
-# Install dependencies
-npm install
-
-# Build
-npm run build
-
-# Development mode with watch
-npm run dev
+```json
+{
+  "mcpServers": {
+    "vite-dev-mcp": {
+      "url": "http://localhost:5173/__mcp"
+    }
+  }
+}
 ```
 
-## Testing
-
-See [TESTING.md](./TESTING.md) for comprehensive testing instructions.
-
+<!--
 Quick test:
 
 1. Start the playground: `cd playground && npm run dev`
 2. Open `http://localhost:5200` in a browser
-3. Run the test script: `npm run test:mcp`
+3. Run the test script: `npm run test:mcp` -->
 
-Or use online tools like [MCP Playground](https://mcpplaygroundonline.com) to test the MCP server at `http://localhost:5200/__mcp`.
+Or use online tools like [MCP Playground](https://mcpplaygroundonline.com) to test the MCP server at `http://localhost:(viteport)/__mcp`.
+
+## Roadmap & TODO
+
+- [ ] **User Custom Adapters/Plugins**:  
+      Allow users to create and register their own custom adapters and plugins for bespoke data gathering and browser automation.
+
+- [ ] **Network Logs**:  
+      Capture and display all browser network requests and responses for advanced debugging and tracing (XHR, fetch, websockets, etc).
+
+- [ ] **Component Routes**:  
+      Visualize and inspect frontend routing, including mapping between components and their active routes.
+
+- [ ] **Component Tree**:  
+      Display a live, interactive component tree for supported frameworks (React, Vue, etc) for better introspection and state tracing.
+
+- [ ] **Cached Storage**:  
+      List and inspect all cached data from browser cache storage APIs.
+
+- [ ] **IndexedDB Explorer**:  
+      Browse, query, and inspect all records/tables in the browser's IndexedDB databases.
+
+- [ ] **Service Worker Monitoring**:
+- [ ] **Console/Log Filtering**:
+- [ ] **Performance Metrics**:  
+      Display core web vitals, page load timings, and real user metrics for performance analysis.
+
+- [ ] **Screenshot/DOM Snapshots**:
+- [ ] **Remote Debugging Capabilities**:
+
+_If you have suggestions for more features or use-cases, please open an issue or discussion!_
 
 ## License
 
