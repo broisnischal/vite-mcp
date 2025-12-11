@@ -63,6 +63,58 @@ import {
 } from "vite-mcp/adapters";
 ```
 
+### Framework Support (React Router, Remix, TanStack Start, etc.)
+
+The plugin automatically injects the bridge script for simple HTML files. For frameworks that generate HTML dynamically (React Router, Remix, TanStack Start, etc.), you can manually include the virtual module:
+
+**Option 1: Script Tag (Recommended)**
+
+```html
+<script type="module" src="/virtual:mcp"></script>
+```
+
+**Option 2: Import in Code**
+
+```typescript
+// In your app entry point (e.g., main.tsx, entry.client.tsx, etc.)
+import "/virtual:mcp"; or import "virtual:mcp";
+```
+
+**TypeScript Support**
+
+To fix TypeScript errors when importing `/virtual:mcp`, you have two options:
+
+**Option A: Add reference directive (Quick fix)**
+
+Add this at the top of your entry file (e.g., `main.tsx`, `entry.client.tsx`):
+
+```typescript
+/// <reference types="vite-mcp/vite-mcp-env" />
+import "/virtual:mcp";
+```
+
+**Option B: Add to tsconfig.json (Recommended for projects)**
+
+Add the types file to your `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": { ... },
+  "include": [
+    "src/**/*",
+    "node_modules/vite-mcp/vite-mcp-env.d.ts"
+  ]
+}
+```
+
+Then you can import without the reference directive:
+
+```typescript
+import "/virtual:mcp";
+```
+
+The virtual module `/virtual:mcp` will automatically initialize the browser bridge and connect to the MCP server via Vite's HMR WebSocket.
+
 ## Available Adapters
 
 - **consoleAdapter** - Read console messages from the browser

@@ -7,7 +7,8 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "vite-mcp-env.d.ts"
   ],
   "exports": {
     ".": {
@@ -19,6 +20,12 @@
       "types": "./dist/adapters/index.d.ts",
       "import": "./dist/adapters/index.js",
       "require": "./dist/adapters/index.cjs"
+    },
+    "./virtual-mcp": {
+      "types": "./dist/virtual-mcp.d.ts"
+    },
+    "./vite-mcp-env": {
+      "types": "./vite-mcp-env.d.ts"
     },
     "./package.json": "./package.json"
   },
