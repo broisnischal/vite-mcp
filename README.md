@@ -2,6 +2,10 @@
 
 A Vite plugin that provides Model Context Protocol (MCP) server capabilities for Vite development, enabling MCP clients to interact with browser environments through adapters.
 
+### WHY?
+
+This plugin gives your agent actual eyes inside the browser. Instead of working blind during Vite HMR, it can now see the UI, console, and page state in real time through MCP tools, and many more if you contribute!
+
 ## Features
 
 - 🔌 **MCP Server Integration** - High-level McpServer API integration
@@ -94,27 +98,27 @@ Or use online tools like [MCP Playground](https://mcpplaygroundonline.com) to te
 ## Roadmap & TODO
 
 - [ ] **User Custom Adapters/Plugins**:  
-      Allow users to create and register their own custom adapters and plugins for bespoke data gathering and browser automation.
+       Allow users to create and register their own custom adapters and plugins for bespoke data gathering and browser automation.
 
 - [ ] **Network Logs**:  
-      Capture and display all browser network requests and responses for advanced debugging and tracing (XHR, fetch, websockets, etc).
+       Capture and display all browser network requests and responses for advanced debugging and tracing (XHR, fetch, websockets, etc).
 
 - [ ] **Component Routes**:  
-      Visualize and inspect frontend routing, including mapping between components and their active routes.
+       Visualize and inspect frontend routing, including mapping between components and their active routes.
 
 - [ ] **Component Tree**:  
-      Display a live, interactive component tree for supported frameworks (React, Vue, etc) for better introspection and state tracing.
+       Display a live, interactive component tree for supported frameworks (React, Vue, etc) for better introspection and state tracing.
 
 - [ ] **Cached Storage**:  
-      List and inspect all cached data from browser cache storage APIs.
+       List and inspect all cached data from browser cache storage APIs.
 
 - [ ] **IndexedDB Explorer**:  
-      Browse, query, and inspect all records/tables in the browser's IndexedDB databases.
+       Browse, query, and inspect all records/tables in the browser's IndexedDB databases.
 
 - [ ] **Service Worker Monitoring**:
 - [ ] **Console/Log Filtering**:
 - [ ] **Performance Metrics**:  
-      Display core web vitals, page load timings, and real user metrics for performance analysis.
+       Display core web vitals, page load timings, and real user metrics for performance analysis.
 
 - [ ] **Screenshot/DOM Snapshots**:
 - [ ] **Remote Debugging Capabilities**:
