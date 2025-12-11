@@ -1,6 +1,5 @@
 // Browser-side bridge that listens for tool calls from the MCP server
 // via Vite's WebSocket and responds with results
-// Browser-side bridge that listens for tool calls from the MCP server
 
 /**
  * Bridge
