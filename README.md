@@ -69,6 +69,8 @@ import {
 - **cookieAdapter** - Read cookies from the browser
 - **localStorageAdapter** - Read localStorage items
 - **sessionAdapter** - Read sessionStorage items
+- **contribute** - Contribute new adapters
+<!-- - **domAdapter** - Read DOM elements -->
 
 ## MCP Endpoint
 
