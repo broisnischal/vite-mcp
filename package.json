@@ -1,6 +1,6 @@
 {
   "name": "vite-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server for Vite development, gives your agent actual eyes inside the browser via adapters.",
   "type": "module",
   "main": "./dist/index.js",
