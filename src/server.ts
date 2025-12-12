@@ -34,79 +34,165 @@ export class ViteMcpServer {
     adapter: AdapterDefinition,
     handler: (input: { [key: string]: unknown }) => Promise<CallToolResult>
   ) {
-    this.adapterHandlers.set(adapter.name, handler);
+    try {
+      this.adapterHandlers.set(adapter.name, handler);
 
-    // The API accepts Zod schemas directly
-    this.mcpServer.registerTool(
-      adapter.name,
-      {
-        title: adapter.name,
-        description: adapter.description,
-        inputSchema: adapter.inputSchema as any,
-        outputSchema: adapter.outputSchema as any,
-      },
-      async (input: { [key: string]: unknown }) => {
-        const handler = this.adapterHandlers.get(adapter.name);
-        if (!handler) {
-          throw new Error(`Adapter handler not found: ${adapter.name}`);
+      // The API accepts Zod schemas directly
+      this.mcpServer.registerTool(
+        adapter.name,
+        {
+          title: adapter.name,
+          description: adapter.description,
+          inputSchema: adapter.inputSchema as any,
+          outputSchema: adapter.outputSchema as any,
+        },
+        async (input: { [key: string]: unknown }) => {
+          try {
+            const handler = this.adapterHandlers.get(adapter.name);
+            if (!handler) {
+              throw new Error(`Adapter handler not found: ${adapter.name}`);
+            }
+            return await handler(input);
+          } catch (error) {
+            // Re-throw the error to let the MCP SDK handle it
+            throw error;
+          }
         }
-        return await handler(input);
-      }
-    );
+      );
+    } catch (error) {
+      console.error(`[vite-mcp] Error registering adapter ${adapter.name}:`, error);
+      throw error;
+    }
   }
 
   async handleHTTP(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Accept, mcp-session-id, Last-Event-ID, Authorization"
-    );
-    res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
-
-    if (req.method === "OPTIONS") {
-      res.writeHead(200);
-      res.end();
-      return;
-    }
-
-    if (req.method === "GET") {
-      res.setHeader("Content-Type", "application/json");
-      res.writeHead(200);
-      res.end(
-        JSON.stringify({
-          name: this.serverName,
-          version: this.serverVersion,
-          adapters: Array.from(this.adapterHandlers.keys()),
-        })
+    try {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Accept, mcp-session-id, Last-Event-ID, Authorization"
       );
+      res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
+
+      if (req.method === "OPTIONS") {
+        try {
+          res.writeHead(200);
+          res.end();
+        } catch (error) {
+          console.error("[vite-mcp] Error handling OPTIONS request:", error);
+        }
+        return;
+      }
+
+      if (req.method === "GET") {
+        try {
+          res.setHeader("Content-Type", "application/json");
+          res.writeHead(200);
+          res.end(
+            JSON.stringify({
+              name: this.serverName,
+              version: this.serverVersion,
+              adapters: Array.from(this.adapterHandlers.keys()),
+            })
+          );
+        } catch (error) {
+          console.error("[vite-mcp] Error handling GET request:", error);
+        }
+        return;
+      }
+    } catch (error) {
+      console.error("[vite-mcp] Error in handleHTTP setup:", error);
+      if (!res.headersSent) {
+        try {
+          res.writeHead(500);
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({
+            error: "Internal server error",
+            details: error instanceof Error ? error.message : String(error)
+          }));
+        } catch (writeError) {
+          console.error("[vite-mcp] Failed to send error response:", writeError);
+        }
+      }
       return;
     }
 
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     let transport: StreamableHTTPServerTransport;
 
-    if (sessionId && this.transports.has(sessionId)) {
-      transport = this.transports.get(sessionId)!;
-    } else {
-      transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        enableJsonResponse: true,
-        onsessioninitialized: (id) => {
-          this.transports.set(id, transport);
-        },
-        onsessionclosed: (id) => {
-          this.transports.delete(id);
-        },
-      });
+    try {
+      if (sessionId && this.transports.has(sessionId)) {
+        transport = this.transports.get(sessionId)!;
+      } else {
+        transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          enableJsonResponse: true,
+          onsessioninitialized: (id) => {
+            try {
+              this.transports.set(id, transport);
+            } catch (error) {
+              console.error("[vite-mcp] Error initializing session:", error);
+            }
+          },
+          onsessionclosed: (id) => {
+            try {
+              this.transports.delete(id);
+            } catch (error) {
+              console.error("[vite-mcp] Error closing session:", error);
+            }
+          },
+        });
 
-      transport.onclose = () => {
+        transport.onclose = () => {
+          try {
+            if (transport.sessionId) {
+              this.transports.delete(transport.sessionId);
+            }
+          } catch (error) {
+            console.error("[vite-mcp] Error in transport onclose:", error);
+          }
+        };
+      }
+    } catch (error) {
+      if (!res.headersSent) {
+        try {
+          res.writeHead(500);
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({
+            error: "Failed to create transport",
+            details: error instanceof Error ? error.message : String(error)
+          }));
+        } catch (writeError) {
+          console.error("[vite-mcp] Failed to send error response:", writeError);
+        }
+      }
+      return;
+    }
+
+    // Connect the server to the transport
+    // This initializes the MCP protocol handshake
+    // Note: This is a necessary step and may take some time on first connection
+    try {
+      await this.mcpServer.connect(transport);
+    } catch (error) {
+      // If connection fails, clean up and return error
+      try {
         if (transport.sessionId) {
           this.transports.delete(transport.sessionId);
         }
-      };
-
-      await this.mcpServer.connect(transport);
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({
+            error: "Failed to initialize MCP connection",
+            details: error instanceof Error ? error.message : String(error)
+          }));
+        }
+      } catch (cleanupError) {
+        console.error("[vite-mcp] Error during connection cleanup:", cleanupError);
+      }
+      return;
     }
 
     if (!req.headers.accept) {
@@ -128,7 +214,11 @@ export class ViteMcpServer {
 
     let body = "";
     req.on("data", (chunk: Buffer) => {
-      body += chunk.toString();
+      try {
+        body += chunk.toString();
+      } catch (error) {
+        console.error("[vite-mcp] Error reading request data:", error);
+      }
     });
 
     req.on("end", async () => {
@@ -137,16 +227,34 @@ export class ViteMcpServer {
         await transport.handleRequest(req, res, message);
       } catch (error) {
         if (!res.headersSent) {
-          res.writeHead(500);
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ error: String(error) }));
+          try {
+            res.writeHead(500);
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({
+              error: "Request processing failed",
+              details: error instanceof Error ? error.message : String(error)
+            }));
+          } catch (writeError) {
+            // If we can't write the error response, just log it
+            console.error("[vite-mcp] Failed to send error response:", writeError);
+          }
         }
       }
     });
 
     req.on("error", (error) => {
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: String(error) }));
+      try {
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({
+            error: "Request error",
+            details: error instanceof Error ? error.message : String(error)
+          }));
+        }
+      } catch (writeError) {
+        console.error("[vite-mcp] Failed to send error response:", writeError);
+      }
     });
   }
 

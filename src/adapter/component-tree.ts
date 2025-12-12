@@ -29,13 +29,16 @@ export const componentTreeAdapterInputSchema = z.object({
 const componentTreeNodeSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
     name: z.string().describe("Component name"),
-    type: z.string().describe("Component type (functional, class, etc.)"),
-    props: z.record(z.string(), z.unknown()).optional().describe("Component props"),
+    type: z.string().describe("Component type (functional, class, dom, etc.)"),
+    props: z.record(z.string(), z.unknown()).optional().describe("Component props or DOM attributes"),
     state: z.unknown().optional().describe("Component state"),
     children: z.array(componentTreeNodeSchema).optional().describe("Child components"),
     key: z.string().optional().describe("React key or Vue key"),
     framework: z.string().optional().describe("Detected framework"),
-  })
+    id: z.string().optional().describe("DOM element id"),
+    className: z.string().optional().describe("DOM element class name"),
+    text: z.string().optional().describe("Text content for text nodes"),
+  }).passthrough()
 );
 
 export const componentTreeAdapterOutputSchema = z.object({
