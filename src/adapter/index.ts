@@ -18,4 +18,14 @@ export {
   sessionAdapterInputSchema,
   sessionAdapterOutputSchema,
 } from "./session.js";
+export {
+  componentRoutesAdapter,
+  componentRoutesAdapterInputSchema,
+  componentRoutesAdapterOutputSchema,
+} from "./component-routes.js";
+export {
+  componentTreeAdapter,
+  componentTreeAdapterInputSchema,
+  componentTreeAdapterOutputSchema,
+} from "./component-tree.js";
 export type { AdapterDefinition } from "./types.js";

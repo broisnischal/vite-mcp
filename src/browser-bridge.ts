@@ -78,6 +78,373 @@ class BrowserBridge {
   }
 
   // @ts-ignore
+  detectRoutingFramework() {
+    // @ts-ignore
+    if (typeof window !== "undefined" && window.__REACT_ROUTER__) {
+      return "react-router";
+    }
+    // @ts-ignore
+    if (typeof window !== "undefined" && window.__VUE_ROUTER__) {
+      return "vue-router";
+    }
+    // @ts-ignore
+    if (typeof window !== "undefined" && window.__TANSTACK_ROUTER__) {
+      return "tanstack-router";
+    }
+    // @ts-ignore
+    if (typeof window !== "undefined" && window.__REMIX__) {
+      return "remix";
+    }
+    // Try to detect React Router via React context
+    // @ts-ignore
+    if (typeof window !== "undefined" && window.React) {
+      try {
+        // @ts-ignore
+        const reactRoot = document.querySelector("#root") || document.body;
+        // @ts-ignore
+        const fiber = reactRoot._reactInternalFiber || reactRoot._reactInternalInstance;
+        if (fiber) {
+          return "react-router";
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    return null;
+  }
+
+  // @ts-ignore
+  async getComponentRoutes(framework = "auto") {
+    const detectedFramework = framework === "auto" ? this.detectRoutingFramework() : framework;
+    const routes = [];
+    let currentRoute = null;
+
+    if (detectedFramework === "react-router") {
+      // Try to access React Router via window or React DevTools
+      // @ts-ignore
+      if (typeof window !== "undefined" && window.__REACT_ROUTER_STATE__) {
+        // @ts-ignore
+        const routerState = window.__REACT_ROUTER_STATE__;
+        // @ts-ignore
+        routes.push(...(routerState.routes || []));
+        // @ts-ignore
+        currentRoute = routerState.currentRoute || null;
+      } else {
+        // Fallback: try to detect from URL and common patterns
+        const path = window.location.pathname;
+        const search = window.location.search;
+        const queryParams: Record<string, string> = {};
+
+        if (search) {
+          new URLSearchParams(search).forEach((value, key) => {
+            queryParams[key] = value;
+          });
+        }
+
+        routes.push({
+          path: path,
+          isActive: true,
+          params: {},
+          query: queryParams,
+          framework: "react-router",
+        });
+
+        currentRoute = {
+          path: path,
+          params: {},
+          query: queryParams,
+        };
+      }
+    } else if (detectedFramework === "vue-router") {
+      // @ts-ignore
+      if (typeof window !== "undefined" && window.__VUE_ROUTER_INSTANCE__) {
+        // @ts-ignore
+        const router = window.__VUE_ROUTER_INSTANCE__;
+        // @ts-ignore
+        const current = router.currentRoute;
+        // @ts-ignore
+        routes.push(...(router.getRoutes() || []).map((route) => ({
+          path: route.path,
+          component: route.name || route.component?.name,
+          isActive: route.path === current?.path,
+          params: current?.params || {},
+          query: current?.query || {},
+          framework: "vue-router",
+        })));
+        currentRoute = {
+          path: current?.path || window.location.pathname,
+          component: current?.name,
+          params: current?.params || {},
+          query: current?.query || {},
+        };
+      } else {
+        // Fallback
+        const path = window.location.pathname;
+        routes.push({
+          path: path,
+          isActive: true,
+          framework: "vue-router",
+        });
+        currentRoute = {
+          path: path,
+        };
+      }
+    } else {
+      // Generic fallback: use current URL
+      const path = window.location.pathname;
+      const search = window.location.search;
+      const queryParams: Record<string, string> = {};
+
+      if (search) {
+        new URLSearchParams(search).forEach((value, key) => {
+          queryParams[key] = value;
+        });
+      }
+
+      routes.push({
+        path: path,
+        isActive: true,
+        query: queryParams,
+      });
+
+      currentRoute = {
+        path: path,
+        query: queryParams,
+      };
+    }
+
+    return {
+      routes,
+      currentRoute,
+      framework: detectedFramework || undefined,
+    };
+  }
+
+  // @ts-ignore
+  detectComponentFramework() {
+    // @ts-ignore
+    if (typeof window !== "undefined" && window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+      return "react";
+    }
+    // @ts-ignore
+    if (typeof window !== "undefined" && window.__VUE__) {
+      return "vue";
+    }
+    // @ts-ignore
+    if (typeof window !== "undefined" && window.__SVELTE__) {
+      return "svelte";
+    }
+    // Try to detect React via fiber
+    // @ts-ignore
+    if (typeof window !== "undefined" && window.React) {
+      try {
+        // @ts-ignore
+        const reactRoot = document.querySelector("#root") || document.body;
+        // @ts-ignore
+        const fiber = reactRoot._reactInternalFiber || reactRoot._reactInternalInstance;
+        if (fiber) {
+          return "react";
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    return null;
+  }
+
+  // @ts-ignore
+  traverseReactFiber(fiber, maxDepth, currentDepth = 0, includeProps = false, includeState = false, seen = new WeakSet()) {
+    if (currentDepth >= maxDepth || !fiber) {
+      return null;
+    }
+
+    const componentName =
+      fiber.type?.displayName ||
+      fiber.type?.name ||
+      (typeof fiber.type === "string" ? fiber.type : "Unknown");
+
+    const node: any = {
+      name: componentName,
+      type: fiber.type?.prototype?.isReactComponent ? "class" : "functional",
+    };
+
+    if (includeProps && fiber.memoizedProps) {
+      // Serialize props safely
+      try {
+        const propsSeen = new WeakSet();
+        node.props = JSON.parse(JSON.stringify(fiber.memoizedProps, (key, value) => {
+          // Filter out functions and circular references
+          if (typeof value === "function") return "[Function]";
+          if (typeof value === "object" && value !== null) {
+            if (propsSeen.has(value)) return "[Circular]";
+            propsSeen.add(value);
+          }
+          return value;
+        }));
+      } catch (e) {
+        node.props = { error: "Could not serialize props" };
+      }
+    }
+
+    if (includeState && fiber.memoizedState) {
+      try {
+        const stateSeen = new WeakSet();
+        node.state = JSON.parse(JSON.stringify(fiber.memoizedState, (key, value) => {
+          if (typeof value === "function") return "[Function]";
+          if (typeof value === "object" && value !== null) {
+            if (stateSeen.has(value)) return "[Circular]";
+            stateSeen.add(value);
+          }
+          return value;
+        }));
+      } catch (e) {
+        node.state = { error: "Could not serialize state" };
+      }
+    }
+
+    if (fiber.key) {
+      node.key = String(fiber.key);
+    }
+
+    node.framework = "react";
+
+    const children: any[] = [];
+    let child = fiber.child;
+    while (child) {
+      const childNode = this.traverseReactFiber(
+        child,
+        maxDepth,
+        currentDepth + 1,
+        includeProps,
+        includeState,
+        seen
+      );
+      if (childNode) {
+        children.push(childNode);
+      }
+      child = child.sibling;
+    }
+
+    if (children.length > 0) {
+      node.children = children;
+    }
+
+    return node;
+  }
+
+  // @ts-ignore
+  async getComponentTree(framework = "auto", maxDepth = 10, includeProps = false, includeState = false) {
+    const detectedFramework = framework === "auto" ? this.detectComponentFramework() : framework;
+    let tree = null;
+    let componentCount = 0;
+
+    if (detectedFramework === "react") {
+      // Try to use React DevTools hook
+      // @ts-ignore
+      if (typeof window !== "undefined" && window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+        // @ts-ignore
+        const hook = window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+        // @ts-ignore
+        const roots = hook.getFiberRoots(1) || new Set();
+        // @ts-ignore
+        const rootFiber = roots.values().next().value?.current;
+
+        if (rootFiber) {
+          // @ts-ignore
+          tree = this.traverseReactFiber(rootFiber, maxDepth, 0, includeProps, includeState);
+          // @ts-ignore
+          const countNodes = (node) => {
+            if (!node) return 0;
+            let count = 1;
+            if (node.children) {
+              // @ts-ignore
+              node.children.forEach((child) => {
+                count += countNodes(child);
+              });
+            }
+            return count;
+          };
+          componentCount = countNodes(tree);
+        }
+      } else {
+        // Fallback: try to access fiber directly
+        try {
+          // @ts-ignore
+          const reactRoot = document.querySelector("#root") || document.body;
+          // @ts-ignore
+          const fiber = reactRoot._reactInternalFiber || reactRoot._reactInternalInstance?.current;
+
+          if (fiber) {
+            // @ts-ignore
+            tree = this.traverseReactFiber(fiber, maxDepth, 0, includeProps, includeState);
+            // @ts-ignore
+            const countNodes = (node) => {
+              if (!node) return 0;
+              let count = 1;
+              if (node.children) {
+                // @ts-ignore
+                node.children.forEach((child) => {
+                  count += countNodes(child);
+                });
+              }
+              return count;
+            };
+            componentCount = countNodes(tree);
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    } else if (detectedFramework === "vue") {
+      // @ts-ignore
+      if (typeof window !== "undefined" && window.__VUE__) {
+        // @ts-ignore
+        const app = window.__VUE__;
+        // Vue 3 instance
+        // @ts-ignore
+        if (app._instance) {
+          // @ts-ignore
+          const instance = app._instance;
+          // @ts-ignore
+          tree = {
+            name: instance.type?.name || instance.type?.__name || "Root",
+            type: "component",
+            framework: "vue",
+          };
+          componentCount = 1;
+        }
+      }
+    } else if (detectedFramework === "svelte") {
+      // @ts-ignore
+      if (typeof window !== "undefined" && window.__SVELTE__) {
+        // @ts-ignore
+        tree = {
+          name: "SvelteApp",
+          type: "component",
+          framework: "svelte",
+        };
+        componentCount = 1;
+      }
+    }
+
+    if (!tree) {
+      // Fallback: create a simple tree from DOM
+      tree = {
+        name: "Document",
+        type: "dom",
+        children: [],
+      };
+      componentCount = 1;
+    }
+
+    return {
+      tree,
+      framework: detectedFramework || undefined,
+      componentCount,
+    };
+  }
+
+  // @ts-ignore
   async executeAdapter(name, params = {}) {
     switch (name) {
       case "read_console": {
@@ -139,6 +506,26 @@ class BrowserBridge {
             })
             .filter((c) => c.name),
         };
+      }
+
+      case "read_component_routes": {
+        // @ts-ignore
+        const framework = params.framework || "auto";
+        // @ts-ignore
+        return await this.getComponentRoutes(framework);
+      }
+
+      case "read_component_tree": {
+        // @ts-ignore
+        const framework = params.framework || "auto";
+        // @ts-ignore
+        const maxDepth = params.maxDepth || 10;
+        // @ts-ignore
+        const includeProps = params.includeProps || false;
+        // @ts-ignore
+        const includeState = params.includeState || false;
+        // @ts-ignore
+        return await this.getComponentTree(framework, maxDepth, includeProps, includeState);
       }
 
       default:
