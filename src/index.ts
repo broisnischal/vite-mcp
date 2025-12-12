@@ -25,6 +25,7 @@ import {
   clearSessionStorageAdapter,
   componentTreeAdapter,
   componentRoutesAdapter,
+  performanceMetricsAdapter,
   listCachesAdapter,
   getCacheKeysAdapter,
   getCacheEntryAdapter,
@@ -87,9 +88,41 @@ export interface ViteMcpAdapterConfig {
   };
 }
 
-export interface ViteMcpOptions {
-  adapters?: AdapterDefinition[];
-  adapterConfig?: ViteMcpAdapterConfig;
+// Type helpers for conditional adapter config
+// Map adapter name to config key
+type AdapterNameToConfigKey<T extends string> =
+  T extends `${string}cookie${string}` ? 'cookies' :
+  T extends `${string}local_storage${string}` ? 'localStorage' :
+  T extends `${string}session_storage${string}` ? 'sessionStorage' :
+  T extends `${string}cache${string}` ? 'cache' :
+  T extends `${string}indexed_db${string}` ? 'indexedDB' :
+  never;
+
+// Get all config keys from adapters (as a union)
+// This works by distributing over each adapter in the array
+type GetConfigKeysUnion<T extends readonly AdapterDefinition[]> =
+  T extends readonly AdapterDefinition[]
+  ? T[number] extends infer Adapter
+  ? Adapter extends AdapterDefinition
+  ? AdapterNameToConfigKey<Adapter['name']>
+  : never
+  : never
+  : never;
+
+// Get unique config keys and build conditional config type
+type ConditionalAdapterConfig<
+  TAdapters extends readonly AdapterDefinition[] | undefined
+> = TAdapters extends readonly AdapterDefinition[]
+  ? GetConfigKeysUnion<TAdapters> extends never
+  ? ViteMcpAdapterConfig // If no matching adapters, allow all config (for adapters like console, component-tree)
+  : Pick<ViteMcpAdapterConfig, GetConfigKeysUnion<TAdapters>>
+  : ViteMcpAdapterConfig; // If adapters not provided, allow all config (buildAdapters will be used)
+
+export interface ViteMcpOptions<
+  TAdapters extends readonly AdapterDefinition[] | undefined = AdapterDefinition[] | undefined
+> {
+  adapters?: TAdapters;
+  adapterConfig?: ConditionalAdapterConfig<TAdapters>;
 }
 
 function log(message: string) {
@@ -120,6 +153,7 @@ function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
     consoleAdapter,
     componentTreeAdapter,
     componentRoutesAdapter,
+    performanceMetricsAdapter,
   ];
 
   // Default: all features enabled
@@ -224,7 +258,11 @@ function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
   return adapters;
 }
 
-export function viteMcp(options: ViteMcpOptions = {}): Plugin {
+export function viteMcp<
+  TAdapters extends readonly AdapterDefinition[] | undefined = AdapterDefinition[] | undefined
+>(
+  options: ViteMcpOptions<TAdapters> = {} as ViteMcpOptions<TAdapters>
+): Plugin {
   const adapters = options.adapters || buildAdapters(options.adapterConfig);
 
   let viteServer: ViteDevServer | null = null;
@@ -307,7 +345,7 @@ export function viteMcp(options: ViteMcpOptions = {}): Plugin {
     const server = new ViteMcpServer({
       name: "vite-mcp",
       version: packageJson.version || "0.0.2",
-      adapters,
+      adapters: Array.from(adapters),
     });
 
     for (const adapter of adapters) {
@@ -336,7 +374,7 @@ export function viteMcp(options: ViteMcpOptions = {}): Plugin {
             if (
               result.content &&
               result.content.length > 0 &&
-              result.content[0].type === "text"
+              result.content[0]?.type === "text"
             ) {
               try {
                 const parsed = JSON.parse(result.content[0].text);

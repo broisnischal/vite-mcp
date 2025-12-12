@@ -1333,9 +1333,177 @@ class BrowserBridge {
         return await this.getComponentTree(framework, maxDepth, includeProps, includeState);
       }
 
+      case "read_performance_metrics": {
+        return await this.getPerformanceMetrics({
+          includeResourceTimings: params.includeResourceTimings !== false,
+          includeNavigationTiming: params.includeNavigationTiming !== false,
+          includeWebVitals: params.includeWebVitals !== false,
+          includePerformanceEntries: params.includePerformanceEntries === true,
+        });
+      }
+
       default:
         throw new Error(`Unknown adapter: ${name}`);
     }
+  }
+
+  getWebVitalsRating(value: number, thresholds: { good: number; poor: number }): "good" | "needs-improvement" | "poor" {
+    if (value <= thresholds.good) return "good";
+    if (value <= thresholds.poor) return "needs-improvement";
+    return "poor";
+  }
+
+  async getPerformanceMetrics(options: {
+    includeResourceTimings: boolean;
+    includeNavigationTiming: boolean;
+    includeWebVitals: boolean;
+    includePerformanceEntries: boolean;
+  }) {
+    const result: any = {
+      timestamp: Date.now(),
+      url: window.location.href,
+    };
+
+    if (options.includeWebVitals && "PerformanceObserver" in window) {
+      const webVitals: any = {};
+
+      try {
+        const perfEntries = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
+        if (perfEntries.length > 0) {
+          const navEntry = perfEntries[0];
+          const ttfb = navEntry.responseStart - navEntry.requestStart;
+          webVitals.ttfb = {
+            value: ttfb,
+            rating: this.getWebVitalsRating(ttfb, { good: 200, poor: 500 }),
+          };
+        }
+      } catch (e) { }
+
+      try {
+        const paintEntries = performance.getEntriesByType("paint") as PerformancePaintTiming[];
+        const fcpEntry = paintEntries.find((entry) => entry.name === "first-contentful-paint");
+        if (fcpEntry) {
+          webVitals.fcp = {
+            value: fcpEntry.startTime,
+            rating: this.getWebVitalsRating(fcpEntry.startTime, { good: 1800, poor: 3000 }),
+          };
+        }
+      } catch (e) { }
+
+      try {
+        const lcpEntries = performance.getEntriesByType("largest-contentful-paint") as any[];
+        if (lcpEntries.length > 0) {
+          const lcpEntry = lcpEntries[lcpEntries.length - 1];
+          webVitals.lcp = {
+            value: lcpEntry.renderTime || lcpEntry.loadTime,
+            rating: this.getWebVitalsRating(lcpEntry.renderTime || lcpEntry.loadTime, { good: 2500, poor: 4000 }),
+          };
+        }
+      } catch (e) { }
+
+      try {
+        const fidEntries = performance.getEntriesByType("first-input") as any[];
+        if (fidEntries.length > 0) {
+          const fidEntry = fidEntries[0];
+          webVitals.fid = {
+            value: fidEntry.processingStart - fidEntry.startTime,
+            rating: this.getWebVitalsRating(fidEntry.processingStart - fidEntry.startTime, { good: 100, poor: 300 }),
+          };
+        }
+      } catch (e) { }
+
+      try {
+        const clsEntries = performance.getEntriesByType("layout-shift") as any[];
+        if (clsEntries.length > 0) {
+          let clsValue = 0;
+          clsEntries.forEach((entry) => {
+            if (!entry.hadRecentInput) {
+              clsValue += entry.value;
+            }
+          });
+          webVitals.cls = {
+            value: clsValue,
+            rating: this.getWebVitalsRating(clsValue, { good: 0.1, poor: 0.25 }),
+          };
+        }
+      } catch (e) { }
+
+      if (Object.keys(webVitals).length > 0) {
+        result.webVitals = webVitals;
+      }
+    }
+
+    if (options.includeNavigationTiming && "performance" in window) {
+      try {
+        const navTiming = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+        if (navTiming) {
+          result.navigationTiming = {
+            navigationStart: navTiming.navigationStart,
+            unloadEventStart: navTiming.unloadEventStart,
+            unloadEventEnd: navTiming.unloadEventEnd,
+            redirectStart: navTiming.redirectStart,
+            redirectEnd: navTiming.redirectEnd,
+            fetchStart: navTiming.fetchStart,
+            domainLookupStart: navTiming.domainLookupStart,
+            domainLookupEnd: navTiming.domainLookupEnd,
+            connectStart: navTiming.connectStart,
+            connectEnd: navTiming.connectEnd,
+            secureConnectionStart: navTiming.secureConnectionStart,
+            requestStart: navTiming.requestStart,
+            responseStart: navTiming.responseStart,
+            responseEnd: navTiming.responseEnd,
+            domLoading: navTiming.domLoading,
+            domInteractive: navTiming.domInteractive,
+            domContentLoadedEventStart: navTiming.domContentLoadedEventStart,
+            domContentLoadedEventEnd: navTiming.domContentLoadedEventEnd,
+            domComplete: navTiming.domComplete,
+            loadEventStart: navTiming.loadEventStart,
+            loadEventEnd: navTiming.loadEventEnd,
+          };
+        }
+      } catch (e) { }
+    }
+
+    if (options.includeResourceTimings && "performance" in window) {
+      try {
+        const resourceEntries = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+        const resources = resourceEntries.map((entry) => ({
+          name: entry.name,
+          initiatorType: entry.initiatorType,
+          duration: entry.duration,
+          transferSize: entry.transferSize,
+          encodedBodySize: entry.encodedBodySize,
+          decodedBodySize: entry.decodedBodySize,
+          startTime: entry.startTime,
+          responseEnd: entry.responseEnd,
+        }));
+
+        const totalTransferSize = resources.reduce((sum, r) => sum + (r.transferSize || 0), 0);
+        const totalEncodedSize = resources.reduce((sum, r) => sum + (r.encodedBodySize || 0), 0);
+        const totalDecodedSize = resources.reduce((sum, r) => sum + (r.decodedBodySize || 0), 0);
+
+        result.resourceTiming = {
+          resources,
+          totalTransferSize,
+          totalEncodedSize,
+          totalDecodedSize,
+        };
+      } catch (e) { }
+    }
+
+    if (options.includePerformanceEntries && "performance" in window) {
+      try {
+        const allEntries = performance.getEntries();
+        result.performanceEntries = allEntries.map((entry) => ({
+          startTime: entry.startTime,
+          duration: entry.duration,
+          name: entry.name,
+          entryType: entry.entryType,
+        }));
+      } catch (e) { }
+    }
+
+    return result;
   }
 }
 
@@ -1350,12 +1518,6 @@ if (typeof window !== "undefined") {
 if (typeof window !== "undefined") {
   const consoleMessages = [];
   window.__mcpConsoleMessages = consoleMessages;
-
-  const originalLog = console.log;
-  const originalInfo = console.info;
-  const originalWarn = console.warn;
-  const originalError = console.error;
-  const originalDebug = console.debug;
 
   const captureMessage = (type, ...args) => {
     const message = args
@@ -1373,29 +1535,40 @@ if (typeof window !== "undefined") {
     }
   };
 
-  console.log = (...args) => {
+  // Store original console methods before wrapping
+  const originalLog = console.log;
+  const originalInfo = console.info;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const originalDebug = console.debug;
+
+  // Wrap console methods with minimal overhead
+  // The stack trace will show one extra frame, but we call the original directly
+  // to minimize the impact. The browser's source map should help resolve
+  // the actual call site in most cases.
+  console.log = function (...args) {
     captureMessage("log", ...args);
-    originalLog.apply(console, args);
+    return originalLog.apply(console, args);
   };
 
-  console.info = (...args) => {
+  console.info = function (...args) {
     captureMessage("info", ...args);
-    originalInfo.apply(console, args);
+    return originalInfo.apply(console, args);
   };
 
-  console.warn = (...args) => {
+  console.warn = function (...args) {
     captureMessage("warn", ...args);
-    originalWarn.apply(console, args);
+    return originalWarn.apply(console, args);
   };
 
-  console.error = (...args) => {
+  console.error = function (...args) {
     captureMessage("error", ...args);
-    originalError.apply(console, args);
+    return originalError.apply(console, args);
   };
 
-  console.debug = (...args) => {
+  console.debug = function (...args) {
     captureMessage("debug", ...args);
-    originalDebug.apply(console, args);
+    return originalDebug.apply(console, args);
   };
 }
 

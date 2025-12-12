@@ -82,6 +82,13 @@ export {
   componentTreeAdapterOutputSchema,
 } from "./component-tree.js";
 
+// Performance metrics adapter
+export {
+  performanceMetricsAdapter,
+  performanceMetricsAdapterInputSchema,
+  performanceMetricsAdapterOutputSchema,
+} from "./performance.js";
+
 // Cache adapters
 export {
   listCachesAdapter,
