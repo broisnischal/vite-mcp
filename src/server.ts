@@ -4,6 +4,11 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "http";
 import type { AdapterDefinition } from "./adapter/types.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import * as z from "zod";
+
+if (typeof z === "undefined") {
+  throw new Error("zod is not available. Please ensure zod is installed.");
+}
 
 export interface ViteMcpServerOptions {
   name: string;
@@ -18,98 +23,407 @@ export class ViteMcpServer {
     (input: { [key: string]: unknown }) => Promise<CallToolResult>
   >();
   private transports = new Map<string, StreamableHTTPServerTransport>();
+  private connectedTransports = new Set<string>();
   private serverName: string;
   private serverVersion: string;
+  private isInitialized: boolean = false;
 
   constructor(options: ViteMcpServerOptions) {
     this.serverName = options.name;
     this.serverVersion = options.version;
+
+    if (typeof z === "undefined") {
+      throw new Error("zod is not available. Please ensure zod is installed.");
+    }
+
     this.mcpServer = new McpServer({
       name: options.name,
       version: options.version,
     });
   }
 
+  markInitialized(): void {
+    this.isInitialized = true;
+  }
+
+  isReady(): boolean {
+    return this.isInitialized && this.adapterHandlers.size > 0;
+  }
+
+
+  // registerAdapter(
+  //   adapter: AdapterDefinition,
+  //   handler: (input: { [key: string]: unknown }) => Promise<CallToolResult>
+  // ) {
+  //   this.adapterHandlers.set(adapter.name, handler);
+
+  //   if (!adapter.inputSchema) {
+  //     throw new Error(`Adapter ${adapter.name} has no inputSchema`);
+  //   }
+
+  //   if (typeof z === "undefined") {
+  //     throw new Error("zod is not available when registering adapter. Please ensure zod is installed.");
+  //   }
+
+  //   let inputJsonSchema: Record<string, unknown>;
+  //   let outputJsonSchema: Record<string, unknown> | undefined;
+
+  //   try {
+  //     const converted = zodToJsonSchema(adapter.inputSchema, {
+  //       unrepresentable: "any",
+  //     });
+  //     inputJsonSchema = this.ensurePlainObject(converted);
+  //   } catch (error) {
+  //     throw new Error(
+  //       `Failed to convert input schema to JSON Schema for adapter ${adapter.name}: ${error instanceof Error ? error.message : String(error)
+  //       }`
+  //     );
+  //   }
+
+  //   if (adapter.outputSchema) {
+  //     try {
+  //       const converted = z.(adapter.outputSchema, {
+  //         unrepresentable: "any",
+  //       });
+  //       outputJsonSchema = this.ensurePlainObject(converted);
+  //     } catch (error) {
+  //       throw new Error(
+  //         `Failed to convert output schema to JSON Schema for adapter ${adapter.name}: ${error instanceof Error ? error.message : String(error)
+  //         }`
+  //       );
+  //     }
+  //   }
+
+  //   const toolDefinition: {
+  //     title: string;
+  //     description: string;
+  //     inputSchema: Record<string, unknown>;
+  //     outputSchema?: Record<string, unknown>;
+  //   } = {
+  //     title: adapter.name,
+  //     description: adapter.description,
+  //     inputSchema: inputJsonSchema,
+  //   };
+
+  //   if (outputJsonSchema !== undefined) {
+  //     toolDefinition.outputSchema = outputJsonSchema;
+  //   }
+
+  //   this.mcpServer.registerTool(
+  //     adapter.name,
+  //     toolDefinition as unknown as any,
+  //     async (input: { [key: string]: unknown }) => {
+  //       try {
+  //         const validatedInput = adapter.inputSchema.parse(input) as { [key: string]: unknown };
+  //         const handler = this.adapterHandlers.get(adapter.name);
+  //         if (!handler) {
+  //           throw new Error(`Adapter handler not found: ${adapter.name}`);
+  //         }
+  //         return await handler(validatedInput);
+  //       } catch (error) {
+  //         if (error instanceof z.ZodError) {
+  //           const errorMessages = error.issues.map((issue) => {
+  //             const path = issue.path.length > 0 ? issue.path.join(".") : "root";
+  //             return `${path}: ${issue.message}`;
+  //           });
+  //           throw new Error(
+  //             `Invalid input for adapter ${adapter.name}: ${errorMessages.join(", ")}`
+  //           );
+  //         }
+  //         throw error;
+  //       }
+  //     }
+  //   );
+  // }
   registerAdapter(
     adapter: AdapterDefinition,
     handler: (input: { [key: string]: unknown }) => Promise<CallToolResult>
   ) {
     this.adapterHandlers.set(adapter.name, handler);
 
-    // The API accepts Zod schemas directly
-    this.mcpServer.registerTool(
-      adapter.name,
-      {
-        title: adapter.name,
-        description: adapter.description,
-        inputSchema: adapter.inputSchema as any,
-        outputSchema: adapter.outputSchema as any,
-      },
-      async (input: { [key: string]: unknown }) => {
-        const handler = this.adapterHandlers.get(adapter.name);
-        if (!handler) {
-          throw new Error(`Adapter handler not found: ${adapter.name}`);
+    if (!adapter.inputSchema) {
+      throw new Error(`Adapter ${adapter.name} has no inputSchema`);
+    }
+
+    if (typeof z === "undefined" || !z) {
+      throw new Error("zod is not available. Please ensure zod is installed.");
+    }
+
+    // Validate that schemas are actually zod schemas
+    if (!adapter.inputSchema || typeof adapter.inputSchema.parse !== "function") {
+      throw new Error(`Adapter ${adapter.name} has an invalid inputSchema`);
+    }
+
+    if (adapter.outputSchema && typeof adapter.outputSchema.parse !== "function") {
+      console.warn(`Adapter ${adapter.name} has an invalid outputSchema, ignoring it`);
+    }
+
+    // Pass Zod schemas directly to MCP SDK
+    // The SDK should handle them, even with Zod v4 compatibility issues
+    const toolDefinition: {
+      title: string;
+      description: string;
+      inputSchema: z.ZodSchema;
+      outputSchema?: z.ZodSchema;
+    } = {
+      title: adapter.name,
+      description: adapter.description,
+      inputSchema: adapter.inputSchema,
+    };
+
+    if (adapter.outputSchema && typeof adapter.outputSchema.parse === "function") {
+      toolDefinition.outputSchema = adapter.outputSchema;
+    }
+
+    try {
+      this.mcpServer.registerTool(
+        adapter.name,
+        toolDefinition as any,
+        async (args: unknown) => {
+          try {
+            const input = args as { [key: string]: unknown };
+
+            // Use safeParse to get detailed error information
+            const parseResult = adapter.inputSchema.safeParse(input);
+            if (!parseResult.success) {
+              const errorMessages = parseResult.error.issues.map((issue) => {
+                const path = issue.path.length > 0 ? issue.path.join(".") : "root";
+                const code = (issue as any).code || "invalid_type";
+                const received = (issue as any).received || typeof input;
+                const expected = (issue as any).expected || "unknown";
+                return `${path}: ${issue.message} (code: ${code}, received: ${received}, expected: ${expected})`;
+              });
+              throw new Error(
+                `Invalid input for adapter ${adapter.name}: ${errorMessages.join(", ")}. Received input: ${JSON.stringify(input)}`
+              );
+            }
+
+            const validatedInput = parseResult.data as { [key: string]: unknown };
+            const handler = this.adapterHandlers.get(adapter.name);
+            if (!handler) {
+              throw new Error(`Adapter handler not found: ${adapter.name}`);
+            }
+            return await handler(validatedInput);
+          } catch (error) {
+            if (error instanceof Error && error.message.startsWith("Invalid input")) {
+              throw error;
+            }
+            if (error instanceof z.ZodError) {
+              const errorMessages = error.issues.map((issue) => {
+                const path = issue.path.length > 0 ? issue.path.join(".") : "root";
+                const code = (issue as any).code || "invalid_type";
+                const received = (issue as any).received || "unknown";
+                const expected = (issue as any).expected || "unknown";
+                return `${path}: ${issue.message} (code: ${code}, received: ${received}, expected: ${expected})`;
+              });
+              throw new Error(
+                `Invalid input for adapter ${adapter.name}: ${errorMessages.join(", ")}`
+              );
+            }
+            throw error;
+          }
         }
-        return await handler(input);
+      );
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes("zod") || error.message.includes("Zod") || error.message.includes("reading 'zod'"))) {
+        console.error(`[vite-mcp] Zod-related error registering adapter ${adapter.name}:`, error);
+        console.error(`[vite-mcp] Stack trace:`, error.stack);
+        throw new Error(`Failed to register adapter ${adapter.name}. This may be due to a zod schema compatibility issue. Error: ${error.message}`);
       }
-    );
+      throw error;
+    }
   }
 
-  async handleHTTP(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Accept, mcp-session-id, Last-Event-ID, Authorization"
-    );
-    res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
 
-    if (req.method === "OPTIONS") {
-      res.writeHead(200);
-      res.end();
+  async handleHTTP(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!this.isReady()) {
+      if (!res.headersSent) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          jsonrpc: "2.0",
+          error: {
+            code: -32000,
+            message: "Server not initialized. Please wait for the server to finish initializing.",
+            data: {
+              initialized: this.isInitialized,
+              adaptersRegistered: this.adapterHandlers.size
+            }
+          },
+          id: null
+        }));
+      }
       return;
     }
 
-    if (req.method === "GET") {
-      res.setHeader("Content-Type", "application/json");
-      res.writeHead(200);
-      res.end(
-        JSON.stringify({
-          name: this.serverName,
-          version: this.serverVersion,
-          adapters: Array.from(this.adapterHandlers.keys()),
-        })
+    const url = req.url || "";
+    const pathname = url.split("?")[0];
+    const isSSEEndpoint = pathname === "/__mcp/sse" || pathname === "/__mcp/sse/";
+
+    try {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Accept, mcp-session-id, Last-Event-ID, Authorization"
       );
+      res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
+
+      if (req.method === "OPTIONS") {
+        try {
+          res.writeHead(200);
+          res.end();
+        } catch (error) {
+          console.error("[vite-mcp] Error handling OPTIONS request:", error);
+        }
+        return;
+      }
+
+      if (req.method === "GET" && !isSSEEndpoint) {
+        try {
+          const isHealthCheck = pathname === "/__mcp/health" || pathname === "/__mcp/health/";
+          res.setHeader("Content-Type", "application/json");
+
+          if (isHealthCheck) {
+            const status = this.isReady() ? "ready" : "initializing";
+            res.writeHead(this.isReady() ? 200 : 503);
+            res.end(
+              JSON.stringify({
+                status,
+                initialized: this.isInitialized,
+                adaptersRegistered: this.adapterHandlers.size,
+                name: this.serverName,
+                version: this.serverVersion,
+              })
+            );
+          } else {
+            res.writeHead(200);
+            res.end(
+              JSON.stringify({
+                name: this.serverName,
+                version: this.serverVersion,
+                adapters: Array.from(this.adapterHandlers.keys()),
+                ready: this.isReady(),
+              })
+            );
+          }
+        } catch (error) {
+          console.error("[vite-mcp] Error handling GET request:", error);
+        }
+        return;
+      }
+    } catch (error) {
+      console.error("[vite-mcp] Error in handleHTTP setup:", error);
+      if (!res.headersSent) {
+        try {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            error: "Internal server error",
+            details: error instanceof Error ? error.message : String(error)
+          }));
+        } catch (writeError) {
+          console.error("[vite-mcp] Failed to send error response:", writeError);
+        }
+      }
       return;
     }
 
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     let transport: StreamableHTTPServerTransport;
+    let isNewTransport = false;
 
-    if (sessionId && this.transports.has(sessionId)) {
-      transport = this.transports.get(sessionId)!;
-    } else {
-      transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        enableJsonResponse: true,
-        onsessioninitialized: (id) => {
-          this.transports.set(id, transport);
-        },
-        onsessionclosed: (id) => {
-          this.transports.delete(id);
-        },
-      });
+    try {
+      if (sessionId && this.transports.has(sessionId)) {
+        transport = this.transports.get(sessionId)!;
+      } else {
+        isNewTransport = true;
+        transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          enableJsonResponse: true,
+          onsessioninitialized: (id) => {
+            try {
+              this.transports.set(id, transport);
+            } catch (error) {
+              console.error("[vite-mcp] Error initializing session:", error);
+            }
+          },
+          onsessionclosed: (id) => {
+            try {
+              this.transports.delete(id);
+              this.connectedTransports.delete(id);
+            } catch (error) {
+              console.error("[vite-mcp] Error closing session:", error);
+            }
+          },
+        });
 
-      transport.onclose = () => {
-        if (transport.sessionId) {
-          this.transports.delete(transport.sessionId);
+        transport.onclose = () => {
+          try {
+            if (transport.sessionId) {
+              this.transports.delete(transport.sessionId);
+              this.connectedTransports.delete(transport.sessionId);
+            }
+          } catch (error) {
+            console.error("[vite-mcp] Error in transport onclose:", error);
+          }
+        };
+      }
+    } catch (error) {
+      if (!res.headersSent) {
+        try {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            error: "Failed to create transport",
+            details: error instanceof Error ? error.message : String(error)
+          }));
+        } catch (writeError) {
+          console.error("[vite-mcp] Failed to send error response:", writeError);
         }
-      };
-
-      await this.mcpServer.connect(transport);
+      }
+      return;
     }
 
-    if (!req.headers.accept) {
+    // Only connect if this is a new transport that hasn't been connected yet
+    if (isNewTransport || (transport.sessionId && !this.connectedTransports.has(transport.sessionId))) {
+      try {
+        await this.mcpServer.connect(transport);
+        if (transport.sessionId) {
+          this.connectedTransports.add(transport.sessionId);
+        }
+      } catch (error) {
+        // Check if error is due to transport already being connected
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes("already started") || errorMessage.includes("already connected")) {
+          // Transport is already connected, just mark it as connected
+          if (transport.sessionId) {
+            this.connectedTransports.add(transport.sessionId);
+          }
+        } else {
+          // If connection fails for other reasons, clean up and return error
+          try {
+            if (transport.sessionId) {
+              this.transports.delete(transport.sessionId);
+              this.connectedTransports.delete(transport.sessionId);
+            }
+            if (!res.headersSent) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({
+                error: "Failed to initialize MCP connection",
+                details: errorMessage
+              }));
+            }
+          } catch (cleanupError) {
+            console.error("[vite-mcp] Error during connection cleanup:", cleanupError);
+          }
+          return;
+        }
+      }
+    }
+
+    // Set Accept header based on endpoint type
+    if (isSSEEndpoint) {
+      // Force SSE mode for SSE endpoint
+      req.headers.accept = "text/event-stream";
+    } else if (!req.headers.accept) {
       req.headers.accept = "application/json, text/event-stream";
     } else if (
       !req.headers.accept.includes("application/json") ||
@@ -128,7 +442,11 @@ export class ViteMcpServer {
 
     let body = "";
     req.on("data", (chunk: Buffer) => {
-      body += chunk.toString();
+      try {
+        body += chunk.toString();
+      } catch (error) {
+        console.error("[vite-mcp] Error reading request data:", error);
+      }
     });
 
     req.on("end", async () => {
@@ -137,16 +455,32 @@ export class ViteMcpServer {
         await transport.handleRequest(req, res, message);
       } catch (error) {
         if (!res.headersSent) {
-          res.writeHead(500);
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ error: String(error) }));
+          try {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              error: "Request processing failed",
+              details: error instanceof Error ? error.message : String(error)
+            }));
+          } catch (writeError) {
+            // If we can't write the error response, just log it
+            console.error("[vite-mcp] Failed to send error response:", writeError);
+          }
         }
       }
     });
 
     req.on("error", (error) => {
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: String(error) }));
+      try {
+        if (!res.headersSent) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            error: "Request error",
+            details: error instanceof Error ? error.message : String(error)
+          }));
+        }
+      } catch (writeError) {
+        console.error("[vite-mcp] Failed to send error response:", writeError);
+      }
     });
   }
 

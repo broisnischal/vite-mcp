@@ -178,3 +178,7 @@ PUBLISHING.md
 SETUP_SUMMARY.md
 ADAPTERS.md
 TESTING.md
+
+.cursor
+.cursorignore
+.cursorrules

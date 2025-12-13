@@ -11,7 +11,8 @@ export default defineConfig([
     sourcemap: true,
     clean: true,
     treeshake: true,
-    external: ["vite"],
+    minify: true,
+    external: ["vite", "zod", "@modelcontextprotocol/sdk"],
     outDir: "dist",
     onSuccess: async () => {
       // Copy browser-bridge.ts to dist directory
@@ -21,11 +22,18 @@ export default defineConfig([
         copyFileSync(srcPath, destPath);
         console.log("✓ Copied browser-bridge.ts to dist/");
       }
+      // Copy browser-bridge.d.ts to dist directory
+      const bridgeTypesSrcPath = join(process.cwd(), "src", "browser-bridge.d.ts");
+      const bridgeTypesDestPath = join(process.cwd(), "dist", "browser-bridge.d.ts");
+      if (existsSync(bridgeTypesSrcPath)) {
+        copyFileSync(bridgeTypesSrcPath, bridgeTypesDestPath);
+        console.log("✓ Copied browser-bridge.d.ts to dist/");
+      }
       // Copy virtual-mcp.d.ts to dist directory
-      const typesPath = join(process.cwd(), "src", "virtual-mcp.d.ts");
-      const typesDestPath = join(process.cwd(), "dist", "virtual-mcp.d.ts");
-      if (existsSync(typesPath)) {
-        copyFileSync(typesPath, typesDestPath);
+      const virtualTypesPath = join(process.cwd(), "src", "virtual-mcp.d.ts");
+      const virtualTypesDestPath = join(process.cwd(), "dist", "virtual-mcp.d.ts");
+      if (existsSync(virtualTypesPath)) {
+        copyFileSync(virtualTypesPath, virtualTypesDestPath);
         console.log("✓ Copied virtual-mcp.d.ts to dist/");
       }
       // Ensure vite-mcp-env.d.ts in root has the declaration (for package distribution)
@@ -63,6 +71,23 @@ declare module "virtual:mcp" {
     splitting: false,
     sourcemap: true,
     treeshake: true,
+    minify: true,
+    external: ["zod", "@modelcontextprotocol/sdk"],
     outDir: "dist/adapters",
+  },
+  {
+    entry: ["src/bridge/index.ts"],
+    format: ["esm"],
+    dts: true,
+    splitting: false,
+    sourcemap: true,
+    treeshake: true,
+    bundle: true,
+    minify: true,
+    external: ["@modelcontextprotocol/sdk"],
+    outDir: "dist/bridge",
+    onSuccess: async () => {
+      console.log("✓ Built bridge/index.js");
+    },
   },
 ]);

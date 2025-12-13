@@ -65,20 +65,61 @@ import {
 
 ### Framework Support (React Router, Remix, TanStack Start, etc.)
 
-The plugin automatically injects the bridge script for simple HTML files. For frameworks that generate HTML dynamically (React Router, Remix, TanStack Start, etc.), you can manually include the virtual module:
+The plugin automatically injects the bridge script for simple HTML files. For frameworks that generate HTML dynamically (React Router, Remix, TanStack Start, etc.), you need to manually include the virtual module in your app entry point.
 
-**Option 1: Script Tag (Recommended)**
+#### React Router / TanStack Router
 
-```html
-<script type="module" src="/virtual:mcp"></script>
-```
-
-**Option 2: Import in Code**
+Add this to your root entry file (e.g., `src/main.tsx`, `src/entry.client.tsx`):
 
 ```typescript
-// In your app entry point (e.g., main.tsx, entry.client.tsx, etc.)
-import "/virtual:mcp"; or import "virtual:mcp";
+/// <reference types="vite-mcp/vite-mcp-env" />
+import "/virtual:mcp";
+
+// Your other imports
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+// ...
 ```
+
+#### Remix
+
+Add this to your `app/entry.client.tsx` file (at the very top, before any other imports):
+
+```typescript
+/// <reference types="vite-mcp/vite-mcp-env" />
+import "/virtual:mcp";
+
+// Your other Remix imports
+import { RemixBrowser } from "@remix-run/react";
+// ...
+```
+
+#### TanStack Start
+
+Add this to your `src/entry-client.tsx` file:
+
+```typescript
+/// <reference types="vite-mcp/vite-mcp-env" />
+import "/virtual:mcp";
+
+// Your other TanStack Start imports
+// ...
+```
+
+#### Vite + React/Vue/Svelte (Standard)
+
+For standard Vite apps, the plugin automatically injects the script. If you're using a custom HTML template, you can also manually import:
+
+```typescript
+// In your main.tsx, main.js, or App.vue
+import "/virtual:mcp";
+```
+
+**Important Notes:**
+
+- The import must be at the **very top** of your entry file, before any console.log calls
+- The console capture script runs automatically when the module loads
+- Both `/virtual:mcp` and `virtual:mcp` import styles work
 
 **TypeScript Support**
 
@@ -114,6 +155,30 @@ import "/virtual:mcp";
 ```
 
 The virtual module `/virtual:mcp` will automatically initialize the browser bridge and connect to the MCP server via Vite's HMR WebSocket.
+
+### Verifying Setup
+
+After adding the import, you should see `[vite-mcp] Bridge: Bridge ready!` in your browser console. If you don't see this message:
+
+1. **Check that you're in development mode** - The bridge only works in development
+2. **Verify the import is at the top** - It must be before any other code
+3. **Check browser console for errors** - Look for any import or module errors
+4. **Verify Vite HMR is working** - The bridge requires Vite's HMR WebSocket
+
+### Testing Console Capture
+
+To verify console messages are being captured:
+
+1. Open your browser console
+2. Run: `console.log("Test message")`
+3. Check `window.__mcpConsoleMessages` - You should see your message in the array
+4. Use the MCP `read_console` tool - It should return your message
+
+If `window.__mcpConsoleMessages` is undefined, the console capture script didn't run. Make sure:
+
+- The `/virtual:mcp` import is at the very top of your entry file
+- You're in development mode
+- The module loaded successfully (check for errors)
 
 ## Available Adapters
 
