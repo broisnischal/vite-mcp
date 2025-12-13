@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AdapterDefinition } from "./types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 const cacheAdapterInputSchema = z.object({
   action: z.union([
@@ -86,5 +87,203 @@ export const cacheAdapter: AdapterDefinition = {
     "Manage Cache API: list caches, get keys, get/set/delete entries, delete cache, or clear cache",
   inputSchema: cacheAdapterInputSchema,
   outputSchema: cacheAdapterOutputSchema,
+  handler: async function (params?: {
+    action?: "list" | "get_keys" | "get_entry" | "set_entry" | "delete_entry" | "delete" | "clear";
+    cacheName?: string;
+    key?: string;
+    response?: {
+      status?: number;
+      statusText?: string;
+      headers?: Record<string, string>;
+      body?: string;
+      url?: string;
+    };
+  }): Promise<CallToolResult> {
+    if (typeof window === "undefined") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: "Not available in server environment" }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    try {
+      const action = params?.action;
+      if (!action) {
+        throw new Error(`Missing required parameter 'action' for cache adapter. Received params: ${JSON.stringify(params)}`);
+      }
+
+      let result: unknown;
+
+      switch (action) {
+        case "list": {
+          if (!("caches" in window)) {
+            result = {
+              action: "list",
+              cacheNames: [],
+              count: 0,
+            };
+            break;
+          }
+          const cacheNames = await caches.keys();
+          result = {
+            action: "list",
+            cacheNames,
+            count: cacheNames.length,
+          };
+          break;
+        }
+        case "get_keys": {
+          if (!("caches" in window)) {
+            throw new Error("Cache Storage API is not available");
+          }
+          const cache = await caches.open(params.cacheName!);
+          const keys = await cache.keys();
+          result = {
+            action: "get_keys",
+            keys: keys.map((request) => request.url),
+            cacheName: params.cacheName,
+            count: keys.length,
+          };
+          break;
+        }
+        case "get_entry": {
+          if (!("caches" in window)) {
+            throw new Error("Cache Storage API is not available");
+          }
+          const cache = await caches.open(params.cacheName!);
+          const request = new Request(params.key!);
+          const response = await cache.match(request);
+
+          if (!response) {
+            result = {
+              action: "get_entry",
+              found: false,
+              key: params.key,
+              cacheName: params.cacheName,
+            };
+            break;
+          }
+
+          const headers: Record<string, string> = {};
+          response.headers.forEach((value, key) => {
+            headers[key] = value;
+          });
+
+          const body = await response.text();
+
+          result = {
+            action: "get_entry",
+            found: true,
+            key: params.key,
+            cacheName: params.cacheName,
+            response: {
+              status: response.status,
+              statusText: response.statusText,
+              headers,
+              body,
+              url: response.url,
+              type: response.type,
+              ok: response.ok,
+            },
+          };
+          break;
+        }
+        case "set_entry": {
+          if (!("caches" in window)) {
+            throw new Error("Cache Storage API is not available");
+          }
+          const cache = await caches.open(params.cacheName!);
+          const request = new Request(params.key!);
+          const responseData = params.response!;
+
+          const response = new Response(responseData.body || "", {
+            status: responseData.status || 200,
+            statusText: responseData.statusText || "OK",
+            headers: responseData.headers || {},
+          });
+
+          await cache.put(request, response);
+          result = {
+            action: "set_entry",
+            success: true,
+            cacheName: params.cacheName,
+            key: params.key,
+          };
+          break;
+        }
+        case "delete_entry": {
+          if (!("caches" in window)) {
+            throw new Error("Cache Storage API is not available");
+          }
+          const cache = await caches.open(params.cacheName!);
+          const request = new Request(params.key!);
+          const success = await cache.delete(request);
+          result = {
+            action: "delete_entry",
+            success,
+            cacheName: params.cacheName,
+            key: params.key,
+          };
+          break;
+        }
+        case "delete": {
+          if (!("caches" in window)) {
+            throw new Error("Cache Storage API is not available");
+          }
+          const success = await caches.delete(params.cacheName!);
+          result = {
+            action: "delete",
+            success,
+            cacheName: params.cacheName,
+          };
+          break;
+        }
+        case "clear": {
+          if (!("caches" in window)) {
+            throw new Error("Cache Storage API is not available");
+          }
+          const cache = await caches.open(params.cacheName!);
+          const keys = await cache.keys();
+          const count = keys.length;
+          for (const key of keys) {
+            await cache.delete(key);
+          }
+          result = {
+            action: "clear",
+            success: true,
+            cacheName: params.cacheName,
+            deletedCount: count,
+          };
+          break;
+        }
+        default:
+          throw new Error(`Unknown cache action: ${action}`);
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
 };
 

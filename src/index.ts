@@ -1,5 +1,5 @@
 import type { Plugin, ViteDevServer } from "vite";
-import { readFileSync, existsSync } from "fs";
+import { existsSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -17,6 +17,7 @@ import {
 } from "./adapter/index.js";
 import type { AdapterDefinition } from "./adapter/types.js";
 import { Deferred } from "./utils.js";
+import { mcpBridge } from "./bridge/bridge.js";
 import packageJson from "../package.json" with { type: "json" };
 import { z } from "zod";
 
@@ -108,19 +109,23 @@ function log(message: string) {
 
 function registerAndAppendWebComponent(
   name: string,
-  component: () => HTMLElement | Promise<HTMLElement>
+  componentFactory: (Base: typeof HTMLElement) => CustomElementConstructor
 ) {
   if (typeof window === "undefined") return;
 
-  customElements.define(
-    `mcp-adapter-${name}`,
-    class extends HTMLElement {
-      connectedCallback() {
-        Promise.resolve(component()).then((el) => {
-          this.appendChild(el);
-        });
-      }
-    }
+  const elementName = `${name}-element`;
+
+  if (!customElements.get(elementName)) {
+    customElements.define(elementName, componentFactory(HTMLElement));
+  }
+
+  window.addEventListener(
+    "load",
+    () => {
+      const node = document.createElement(elementName);
+      document.body.appendChild(node);
+    },
+    { once: true }
   );
 }
 
@@ -408,25 +413,74 @@ export function viteMcp<
           return cachedBridgeCode;
         }
 
-        const distBridgePath = join(DIST_DIR, "browser-bridge.ts");
-        const srcBridgePath = join(SRC_DIR, "browser-bridge.ts");
-        const bridgePath = existsSync(distBridgePath)
-          ? distBridgePath
-          : srcBridgePath;
+        const serializedToolHandlers = adapters
+          .map(
+            ({ name, handler }) =>
+              `[${JSON.stringify(name)}, {handler: ${handler.toString()}}]`
+          )
+          .join(",");
 
-        if (existsSync(bridgePath)) {
-          let bridgeCode = readFileSync(bridgePath, "utf-8");
-
-          // Strip TypeScript-specific syntax that causes parse errors
-          // Replace type assertions and type-only syntax with JavaScript-compatible code
-          bridgeCode = bridgeCode.replace(/\((\w+)\s+as\s+\w+\)/g, "$1");
-          bridgeCode = bridgeCode.replace(/\/\/\s*@ts-ignore.*\n/g, "");
-
-          const fullCode = bridgeCode +
-            (webComponentRegistrations ? `\n${webComponentRegistrations}` : "");
-          cachedBridgeCode = fullCode;
-          return fullCode;
+        const consoleCaptureScript = `
+(function() {
+  if (typeof window === "undefined") return;
+  if (window.__mcpConsoleCaptureInitialized) return;
+  window.__mcpConsoleCaptureInitialized = true;
+  
+  if (!window.__mcpConsoleMessages) {
+    window.__mcpConsoleMessages = [];
+  }
+  var consoleMessages = window.__mcpConsoleMessages;
+  var captureMessage = function(type, args) {
+    try {
+      var message = Array.prototype.map.call(args, function(arg) {
+        if (arg === null) return "null";
+        if (arg === undefined) return "undefined";
+        if (typeof arg === "object") {
+          try {
+            return JSON.stringify(arg); 
+          } catch (e) {
+            return String(arg);
+          }
         }
+        return String(arg);
+      }).join(" ");
+      consoleMessages.push({ type: type, message: message, timestamp: Date.now() });
+      if (consoleMessages.length > 1000) consoleMessages.shift();
+    } catch (e) {
+    }
+  };
+  var wrapConsoleMethod = function(method) {
+    if (!console[method]) return;
+    var original = console[method];
+    if (original && !original.__mcpWrapped) {
+      console[method] = function() {
+        captureMessage(method, arguments);
+        return original.apply(console, arguments);
+      };
+      console[method].__mcpWrapped = true;
+    }
+  };
+  var methods = ["log", "info", "warn", "error", "debug"];
+  for (var i = 0; i < methods.length; i++) {
+    wrapConsoleMethod(methods[i]);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function() {
+      for (var i = 0; i < methods.length; i++) {
+        wrapConsoleMethod(methods[i]);
+      }
+    });
+  }
+})();
+`;
+
+        const bridgeCode = `${consoleCaptureScript}\n(${mcpBridge.toString()})(import.meta.hot, new Map([${serializedToolHandlers}]), ${Deferred.toString()});`;
+
+        const fullCode =
+          bridgeCode +
+          (webComponentRegistrations ? `\n${webComponentRegistrations}` : "");
+        cachedBridgeCode = fullCode;
+        return fullCode;
       }
       return undefined;
     },
@@ -502,6 +556,10 @@ export function viteMcp<
     configureServer(server: ViteDevServer) {
       viteServer = server;
 
+      server.ws.on("mcp:bridge-ready", () => {
+        log("Bridge ready!");
+      });
+
       server.ws.on(
         "mcp:tool-result",
         (data: { id: string; result?: CallToolResult; error?: unknown }) => {
@@ -526,6 +584,40 @@ export function viteMcp<
           }
         }
       );
+
+      server.ws.on("mcp:tool-server-call", async ({ id, name, params }) => {
+        const [toolName, methodName] = name.split(":");
+
+        const adapter = adapters.find((adapter) => adapter.name === toolName);
+
+        if (!adapter) {
+          server.ws.send("mcp:tool-server-result", {
+            id,
+            error: `Adapter not found: ${toolName}`,
+          });
+          return;
+        }
+
+        const method = adapter.server?.[methodName];
+
+        if (!method) {
+          server.ws.send("mcp:tool-server-result", {
+            id,
+            error: `Method not found: ${methodName}`,
+          });
+          return;
+        }
+
+        try {
+          const result = await method(params);
+          server.ws.send("mcp:tool-server-result", { id, result });
+        } catch (error) {
+          server.ws.send("mcp:tool-server-result", {
+            id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
 
       const mcpServer = createMcpServer();
 

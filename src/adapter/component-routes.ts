@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { AdapterDefinition } from "./types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { getComponentRoutes } from "../bridge/utils/component-routes.js";
 
 export const componentRoutesAdapterInputSchema = z.object({
   framework: z
@@ -52,4 +54,41 @@ export const componentRoutesAdapter: AdapterDefinition = {
     "Visualize and inspect frontend routing, including mapping between components and their active routes",
   inputSchema: componentRoutesAdapterInputSchema,
   outputSchema: componentRoutesAdapterOutputSchema,
+  handler: async function (params?: { framework?: string }): Promise<CallToolResult> {
+    if (typeof window === "undefined") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: "Not available in server environment" }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    try {
+      const framework = params?.framework || "auto";
+      const result = await getComponentRoutes(framework);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
 };

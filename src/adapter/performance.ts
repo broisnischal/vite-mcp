@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { AdapterDefinition } from "./types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { getPerformanceMetrics } from "../bridge/utils/performance.js";
 
 export const performanceMetricsAdapterInputSchema = z.object({
   includeResourceTimings: z
@@ -132,5 +134,51 @@ export const performanceMetricsAdapter: AdapterDefinition = {
     "Display core web vitals, page load timings, and real user metrics for performance analysis",
   inputSchema: performanceMetricsAdapterInputSchema,
   outputSchema: performanceMetricsAdapterOutputSchema,
+  handler: async function (params?: {
+    includeResourceTimings?: boolean;
+    includeNavigationTiming?: boolean;
+    includeWebVitals?: boolean;
+    includePerformanceEntries?: boolean;
+  }): Promise<CallToolResult> {
+    if (typeof window === "undefined") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: "Not available in server environment" }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    try {
+      const result = await getPerformanceMetrics({
+        includeResourceTimings: params?.includeResourceTimings !== false,
+        includeNavigationTiming: params?.includeNavigationTiming !== false,
+        includeWebVitals: params?.includeWebVitals !== false,
+        includePerformanceEntries: params?.includePerformanceEntries === true,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
 };
 

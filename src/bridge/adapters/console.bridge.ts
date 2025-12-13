@@ -1,5 +1,11 @@
 import type { AdapterBridge } from "../types.js";
 
+interface ConsoleMessage {
+    type: string;
+    message: string;
+    timestamp?: number;
+}
+
 export class ConsoleBridge implements AdapterBridge {
     async execute(params: { limit?: number; type?: string }): Promise<{ messages: Array<{ type: string; message: string; timestamp?: number }> }> {
         if (typeof window === "undefined") {
@@ -7,34 +13,23 @@ export class ConsoleBridge implements AdapterBridge {
         }
 
         try {
-            let component: HTMLElement & {
-                getConsoleLogs(args: { limit?: number; type?: string }): Promise<{ messages: Array<{ type: string; message: string; timestamp: number }> }>;
-            } | null = document.querySelector("read-console-element") as HTMLElement & {
-                getConsoleLogs(args: { limit?: number; type?: string }): Promise<{ messages: Array<{ type: string; message: string; timestamp: number }> }>;
+            const messages = ((window as any).__mcpConsoleMessages || []) as ConsoleMessage[];
+            let filtered = [...messages];
+
+            if (params.type) {
+                filtered = filtered.filter((msg: ConsoleMessage) => msg.type === params.type);
+            }
+
+            const limit = params.limit !== undefined ? params.limit : 100;
+            filtered = filtered.slice(-limit);
+
+            return {
+                messages: filtered.map((msg: ConsoleMessage) => ({
+                    type: msg.type,
+                    message: msg.message,
+                    timestamp: msg.timestamp || Date.now(),
+                })),
             };
-
-            if (!component) {
-                const wrapper = document.querySelector("mcp-adapter-read_console");
-                if (wrapper) {
-                    component = wrapper.querySelector("read-console-element") as HTMLElement & {
-                        getConsoleLogs(args: { limit?: number; type?: string }): Promise<{ messages: Array<{ type: string; message: string; timestamp: number }> }>;
-                    };
-                }
-            }
-
-            if (!component && (window as any).__mcpConsoleInterceptor) {
-                component = (window as any).__mcpConsoleInterceptor;
-            }
-
-            if (component && typeof component.getConsoleLogs === "function") {
-                const result = await component.getConsoleLogs({
-                    ...(params.limit !== undefined && { limit: params.limit }),
-                    ...(params.type !== undefined && { type: params.type }),
-                });
-                return result;
-            }
-
-            return { messages: [] };
         } catch (error) {
             console.error("[MCP] Error reading console messages:", error);
             return { messages: [] };
