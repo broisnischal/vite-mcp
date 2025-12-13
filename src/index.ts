@@ -130,6 +130,190 @@ function registerAndAppendWebComponent(
   );
 }
 
+type ActionPermissionMap = {
+  read: string[];
+  write: string[];
+  delete: string[];
+};
+
+const ACTION_PERMISSIONS: Record<string, ActionPermissionMap> = {
+  cookie: {
+    read: ["read", "get"],
+    write: ["set", "edit"],
+    delete: ["remove"],
+  },
+  local_storage: {
+    read: ["read", "get"],
+    write: ["set", "edit"],
+    delete: ["remove", "clear"],
+  },
+  session_storage: {
+    read: ["read", "get"],
+    write: ["set", "edit"],
+    delete: ["remove", "clear"],
+  },
+  cache: {
+    read: ["list", "get_keys", "get_entry"],
+    write: ["set_entry"],
+    delete: ["delete_entry", "delete", "clear"],
+  },
+  indexed_db: {
+    read: ["list_databases", "get_database_info", "get_keys", "get_entry"],
+    write: ["set_entry"],
+    delete: ["delete_entry", "clear_object_store", "delete_database"],
+  },
+};
+
+function getAllowedActions(
+  adapterName: string,
+  permissions: { read?: boolean; write?: boolean; delete?: boolean }
+): string[] {
+  const actionMap = ACTION_PERMISSIONS[adapterName];
+  if (!actionMap) {
+    return [];
+  }
+
+  const allowed: string[] = [];
+  if (permissions.read !== false) {
+    allowed.push(...actionMap.read);
+  }
+  if (permissions.write !== false) {
+    allowed.push(...actionMap.write);
+  }
+  if (permissions.delete !== false) {
+    allowed.push(...actionMap.delete);
+  }
+
+  return allowed;
+}
+
+function restrictAdapter(
+  adapter: AdapterDefinition,
+  permissions: { read?: boolean; write?: boolean; delete?: boolean }
+): AdapterDefinition {
+  const allowedActions = getAllowedActions(adapter.name, permissions);
+
+  if (allowedActions.length === 0) {
+    throw new Error(
+      `Adapter ${adapter.name} has no allowed actions with the current permissions`
+    );
+  }
+
+  const originalInputSchema = adapter.inputSchema as z.ZodObject<any>;
+  const actionField = originalInputSchema.shape?.["action"];
+
+  if (!actionField) {
+    return adapter;
+  }
+
+  let restrictedActionSchema: z.ZodTypeAny;
+
+  if (actionField instanceof z.ZodUnion) {
+    const allowedLiterals = actionField.options.filter((option: any) => {
+      if (option instanceof z.ZodLiteral) {
+        const value = option.value as string;
+        return allowedActions.includes(value);
+      }
+      return false;
+    }) as z.ZodLiteral<string>[];
+
+    if (allowedLiterals.length === 0) {
+      throw new Error(
+        `No allowed actions found for adapter ${adapter.name} with current permissions`
+      );
+    }
+
+    restrictedActionSchema = allowedLiterals.length === 1
+      ? allowedLiterals[0]!
+      : z.union(allowedLiterals as [z.ZodLiteral<string>, z.ZodLiteral<string>, ...z.ZodLiteral<string>[]]);
+  } else if (actionField instanceof z.ZodEnum) {
+    const enumValues = actionField.options as readonly string[];
+    const allowedEnumValues = enumValues.filter((val) =>
+      allowedActions.includes(val)
+    ) as [string, ...string[]];
+
+    if (allowedEnumValues.length === 0) {
+      throw new Error(
+        `No allowed actions found for adapter ${adapter.name} with current permissions`
+      );
+    }
+
+    restrictedActionSchema = z.enum(allowedEnumValues);
+  } else {
+    return adapter;
+  }
+
+  const restrictedInputSchema = originalInputSchema.extend({
+    action: restrictedActionSchema.describe("Action to perform"),
+  });
+
+  let restrictedOutputSchema: z.ZodTypeAny | undefined = adapter.outputSchema;
+  if (adapter.outputSchema) {
+    const outputSchema = adapter.outputSchema as z.ZodObject<any>;
+    const outputActionField = outputSchema.shape?.["action"];
+
+    if (outputActionField instanceof z.ZodEnum) {
+      const enumValues = outputActionField.options as readonly string[];
+      const allowedOutputEnumValues = enumValues.filter((val) =>
+        allowedActions.includes(val)
+      ) as [string, ...string[]];
+
+      if (allowedOutputEnumValues.length > 0) {
+        restrictedOutputSchema = outputSchema.extend({
+          action: z.enum(allowedOutputEnumValues).describe("The action that was performed"),
+        });
+      }
+    }
+  }
+
+  const restrictedHandler = async (params?: { [key: string]: unknown }): Promise<CallToolResult> => {
+    const action = params?.["action"] as string | undefined;
+
+    if (!action) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: `Missing required parameter 'action' for ${adapter.name} adapter`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    if (!allowedActions.includes(action)) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: `Action '${action}' is not allowed for ${adapter.name} adapter with current permissions. Allowed actions: ${allowedActions.join(", ")}`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    return await adapter.handler.call({ server: adapter.server || {} }, params);
+  };
+
+  const result: AdapterDefinition = {
+    ...adapter,
+    inputSchema: restrictedInputSchema,
+    handler: restrictedHandler,
+    description: `${adapter.description} (Allowed actions: ${allowedActions.join(", ")})`,
+  };
+
+  if (restrictedOutputSchema) {
+    result.outputSchema = restrictedOutputSchema;
+  }
+
+  return result;
+}
+
 function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
   const adapters: AdapterDefinition[] = [
     consoleAdapter,
@@ -156,23 +340,43 @@ function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
   };
 
   if (finalConfig.cookies.enabled !== false) {
-    adapters.push(cookieAdapter);
+    const cookiePerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+    if (finalConfig.cookies.read !== undefined) cookiePerms.read = finalConfig.cookies.read;
+    if (finalConfig.cookies.write !== undefined) cookiePerms.write = finalConfig.cookies.write;
+    if (finalConfig.cookies.delete !== undefined) cookiePerms.delete = finalConfig.cookies.delete;
+    adapters.push(restrictAdapter(cookieAdapter, cookiePerms));
   }
 
   if (finalConfig.localStorage.enabled !== false) {
-    adapters.push(localStorageAdapter);
+    const lsPerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+    if (finalConfig.localStorage.read !== undefined) lsPerms.read = finalConfig.localStorage.read;
+    if (finalConfig.localStorage.write !== undefined) lsPerms.write = finalConfig.localStorage.write;
+    if (finalConfig.localStorage.delete !== undefined) lsPerms.delete = finalConfig.localStorage.delete;
+    adapters.push(restrictAdapter(localStorageAdapter, lsPerms));
   }
 
   if (finalConfig.sessionStorage.enabled !== false) {
-    adapters.push(sessionStorageAdapter);
+    const ssPerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+    if (finalConfig.sessionStorage.read !== undefined) ssPerms.read = finalConfig.sessionStorage.read;
+    if (finalConfig.sessionStorage.write !== undefined) ssPerms.write = finalConfig.sessionStorage.write;
+    if (finalConfig.sessionStorage.delete !== undefined) ssPerms.delete = finalConfig.sessionStorage.delete;
+    adapters.push(restrictAdapter(sessionStorageAdapter, ssPerms));
   }
 
   if (finalConfig.cache.enabled !== false) {
-    adapters.push(cacheAdapter);
+    const cachePerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+    if (finalConfig.cache.read !== undefined) cachePerms.read = finalConfig.cache.read;
+    if (finalConfig.cache.write !== undefined) cachePerms.write = finalConfig.cache.write;
+    if (finalConfig.cache.delete !== undefined) cachePerms.delete = finalConfig.cache.delete;
+    adapters.push(restrictAdapter(cacheAdapter, cachePerms));
   }
 
   if (finalConfig.indexedDB.enabled !== false) {
-    adapters.push(indexedDBAdapter);
+    const idbPerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+    if (finalConfig.indexedDB.read !== undefined) idbPerms.read = finalConfig.indexedDB.read;
+    if (finalConfig.indexedDB.write !== undefined) idbPerms.write = finalConfig.indexedDB.write;
+    if (finalConfig.indexedDB.delete !== undefined) idbPerms.delete = finalConfig.indexedDB.delete;
+    adapters.push(restrictAdapter(indexedDBAdapter, idbPerms));
   }
 
   return adapters;
@@ -183,7 +387,59 @@ export function viteMcp<
 >(
   options: ViteMcpOptions<TAdapters> = {} as ViteMcpOptions<TAdapters>
 ): Plugin {
-  const adapters = options.adapters || buildAdapters(options.adapterConfig);
+  let adapters = options.adapters || buildAdapters(options.adapterConfig);
+
+  if (options.adapters && options.adapterConfig) {
+    const configMap: Record<string, { read?: boolean; write?: boolean; delete?: boolean }> = {};
+
+    if (options.adapterConfig.cookies) {
+      const cookiePerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+      if (options.adapterConfig.cookies.read !== undefined) cookiePerms.read = options.adapterConfig.cookies.read;
+      if (options.adapterConfig.cookies.write !== undefined) cookiePerms.write = options.adapterConfig.cookies.write;
+      if (options.adapterConfig.cookies.delete !== undefined) cookiePerms.delete = options.adapterConfig.cookies.delete;
+      configMap["cookie"] = cookiePerms;
+    }
+
+    if (options.adapterConfig.localStorage) {
+      const lsPerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+      if (options.adapterConfig.localStorage.read !== undefined) lsPerms.read = options.adapterConfig.localStorage.read;
+      if (options.adapterConfig.localStorage.write !== undefined) lsPerms.write = options.adapterConfig.localStorage.write;
+      if (options.adapterConfig.localStorage.delete !== undefined) lsPerms.delete = options.adapterConfig.localStorage.delete;
+      configMap["local_storage"] = lsPerms;
+    }
+
+    if (options.adapterConfig.sessionStorage) {
+      const ssPerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+      if (options.adapterConfig.sessionStorage.read !== undefined) ssPerms.read = options.adapterConfig.sessionStorage.read;
+      if (options.adapterConfig.sessionStorage.write !== undefined) ssPerms.write = options.adapterConfig.sessionStorage.write;
+      if (options.adapterConfig.sessionStorage.delete !== undefined) ssPerms.delete = options.adapterConfig.sessionStorage.delete;
+      configMap["session_storage"] = ssPerms;
+    }
+
+    if (options.adapterConfig.cache) {
+      const cachePerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+      if (options.adapterConfig.cache.read !== undefined) cachePerms.read = options.adapterConfig.cache.read;
+      if (options.adapterConfig.cache.write !== undefined) cachePerms.write = options.adapterConfig.cache.write;
+      if (options.adapterConfig.cache.delete !== undefined) cachePerms.delete = options.adapterConfig.cache.delete;
+      configMap["cache"] = cachePerms;
+    }
+
+    if (options.adapterConfig.indexedDB) {
+      const idbPerms: { read?: boolean; write?: boolean; delete?: boolean } = {};
+      if (options.adapterConfig.indexedDB.read !== undefined) idbPerms.read = options.adapterConfig.indexedDB.read;
+      if (options.adapterConfig.indexedDB.write !== undefined) idbPerms.write = options.adapterConfig.indexedDB.write;
+      if (options.adapterConfig.indexedDB.delete !== undefined) idbPerms.delete = options.adapterConfig.indexedDB.delete;
+      configMap["indexed_db"] = idbPerms;
+    }
+
+    adapters = adapters.map((adapter) => {
+      const perms = configMap[adapter.name];
+      if (perms && ACTION_PERMISSIONS[adapter.name]) {
+        return restrictAdapter(adapter, perms);
+      }
+      return adapter;
+    });
+  }
 
   let viteServer: ViteDevServer | null = null;
   const pendingToolCalls = new Map<string, Deferred<CallToolResult>>();
