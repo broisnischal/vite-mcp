@@ -5,6 +5,7 @@ export { SessionStorageBridge } from "./session-storage.bridge.js";
 export { CacheBridge } from "./cache.bridge.js";
 export { IndexedDBBridge } from "./indexed-db.bridge.js";
 export { PerformanceBridge } from "./performance.bridge.js";
+export { ComponentTreeBridge } from "./component-tree.bridge.js";
 
 // export { ComponentRoutesBridge } from "./component-routes.bridge.js";
 
