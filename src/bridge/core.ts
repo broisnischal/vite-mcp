@@ -21,7 +21,7 @@ export class BrowserBridge {
   }
 
   private registerDefaultAdapters(): void {
-    this.adapters.set("read_console", new ConsoleBridge());
+    this.adapters.set("read-console", new ConsoleBridge());
     this.adapters.set("cookie", new CookieBridge());
     this.adapters.set("local_storage", new LocalStorageBridge());
     this.adapters.set("session_storage", new SessionStorageBridge());

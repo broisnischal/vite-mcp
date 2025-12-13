@@ -102,6 +102,10 @@ export interface ViteMcpOptions<
 > {
   adapters?: TAdapters;
   adapterConfig?: ConditionalAdapterConfig<TAdapters>;
+  transformModule?: RegExp;
+  endpoint?: string;
+  name?: string;
+  disableConsoleCapture?: boolean;
 }
 
 function log(message: string) {
@@ -388,6 +392,8 @@ export function viteMcp<
   options: ViteMcpOptions<TAdapters> = {} as ViteMcpOptions<TAdapters>
 ): Plugin {
   let adapters = options.adapters || buildAdapters(options.adapterConfig);
+  const transformModule = options.transformModule;
+  const disableConsoleCapture = options.disableConsoleCapture === true;
 
   if (options.adapters && options.adapterConfig) {
     const configMap: Record<string, { read?: boolean; write?: boolean; delete?: boolean }> = {};
@@ -557,6 +563,10 @@ export function viteMcp<
           try {
             const result = await dispatchToolCall(adapter.name, input);
 
+            if (result.structuredContent) {
+              return result;
+            }
+
             if (
               result.content &&
               result.content.length > 0 &&
@@ -579,6 +589,7 @@ export function viteMcp<
                   } catch (parseError) {
                     log(`Output schema validation failed for ${adapter.name}, returning unvalidated result: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
                     return {
+                      structuredContent: parsed as Record<string, unknown>,
                       content: [
                         {
                           type: "text",
@@ -597,7 +608,49 @@ export function viteMcp<
                   ],
                 };
               } catch {
+                if (adapter.outputSchema) {
+                  log(`Failed to parse result for ${adapter.name}, but output schema is defined. Returning default structure.`);
+                  if (adapter.name === "read-console") {
+                    return {
+                      structuredContent: { logs: [] } as Record<string, unknown>,
+                      content: result.content,
+                    };
+                  }
+                  try {
+                    const defaultStructure = adapter.outputSchema.parse({});
+                    return {
+                      structuredContent: defaultStructure as Record<string, unknown>,
+                      content: result.content,
+                    };
+                  } catch {
+                    return {
+                      structuredContent: { logs: [] } as Record<string, unknown>,
+                      content: result.content,
+                    };
+                  }
+                }
                 return result;
+              }
+            }
+            if (adapter.outputSchema && !result.structuredContent) {
+              log(`No structured content for ${adapter.name} but output schema is defined. Returning default structure.`);
+              if (adapter.name === "read-console") {
+                return {
+                  structuredContent: { logs: [] } as Record<string, unknown>,
+                  content: result.content || [],
+                };
+              }
+              try {
+                const defaultStructure = adapter.outputSchema.parse({});
+                return {
+                  structuredContent: defaultStructure as Record<string, unknown>,
+                  content: result.content || [],
+                };
+              } catch {
+                return {
+                  structuredContent: { logs: [] } as Record<string, unknown>,
+                  content: result.content || [],
+                };
               }
             }
             return result;
@@ -690,32 +743,25 @@ export function viteMcp<
           )
           .join(",");
 
-        const consoleCaptureScript = `
+        const consoleCaptureScript = disableConsoleCapture ? '' : `
 (function() {
   if (typeof window === "undefined") return;
   if (window.__mcpConsoleCaptureInitialized) return;
   window.__mcpConsoleCaptureInitialized = true;
   
-  if (!window.__mcpConsoleMessages) {
-    window.__mcpConsoleMessages = [];
+  if (!window.__mcpConsoleEntries) {
+    window.__mcpConsoleEntries = [];
   }
-  var consoleMessages = window.__mcpConsoleMessages;
-  var captureMessage = function(type, args) {
+  var consoleEntries = window.__mcpConsoleEntries;
+  var captureEntry = function(level, args) {
     try {
-      var message = Array.prototype.map.call(args, function(arg) {
-        if (arg === null) return "null";
-        if (arg === undefined) return "undefined";
-        if (typeof arg === "object") {
-          try {
-            return JSON.stringify(arg); 
-          } catch (e) {
-            return String(arg);
-          }
-        }
-        return String(arg);
-      }).join(" ");
-      consoleMessages.push({ type: type, message: message, timestamp: Date.now() });
-      if (consoleMessages.length > 1000) consoleMessages.shift();
+      var entryArgs = Array.prototype.slice.call(args);
+      consoleEntries.push({ 
+        level: level, 
+        args: entryArgs, 
+        timestamp: Date.now() 
+      });
+      if (consoleEntries.length > 1000) consoleEntries.shift();
     } catch (e) {
     }
   };
@@ -723,17 +769,59 @@ export function viteMcp<
     if (!console[method]) return;
     var original = console[method];
     if (original && !original.__mcpWrapped) {
-      console[method] = function() {
-        captureMessage(method, arguments);
+      var wrapped = function() {
+        captureEntry(method, arguments);
         return original.apply(console, arguments);
       };
-      console[method].__mcpWrapped = true;
+      try {
+        Object.defineProperty(wrapped, 'name', { 
+          value: original.name || method, 
+          configurable: true
+        });
+        if (original.toString) {
+          Object.defineProperty(wrapped, 'toString', { 
+            value: function() { return original.toString(); },
+            configurable: true
+          });
+        }
+        Object.defineProperty(wrapped, 'length', {
+          value: original.length || 0,
+          configurable: true
+        });
+      } catch (e) {
+      }
+      try {
+        var proto = Object.getPrototypeOf(original);
+        if (proto) {
+          Object.setPrototypeOf(wrapped, proto);
+        }
+      } catch (e) {
+      }
+      try {
+        Object.defineProperty(console, method, {
+          value: wrapped,
+          writable: true,
+          configurable: true,
+          enumerable: true
+        });
+        Object.defineProperty(console[method], '__mcpWrapped', {
+          value: true,
+          configurable: true,
+          enumerable: false,
+          writable: false
+        });
+      } catch (e) {
+        console[method] = wrapped;
+        console[method].__mcpWrapped = true;
+      }
     }
   };
   var methods = ["log", "info", "warn", "error", "debug"];
-  for (var i = 0; i < methods.length; i++) {
-    wrapConsoleMethod(methods[i]);
-  }
+  setTimeout(function() {
+    for (var i = 0; i < methods.length; i++) {
+      wrapConsoleMethod(methods[i]);
+    }
+  }, 0);
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function() {
       for (var i = 0; i < methods.length; i++) {
@@ -754,52 +842,105 @@ export function viteMcp<
       }
       return undefined;
     },
+    transform(code: string, id: string) {
+      if (!transformModule || !isDevMode) return;
+
+      if (!transformModule.test(id)) return;
+
+      log(`Transforming module ${id}`);
+
+      const bridgeImport = `import "${VIRTUAL_MCP_ID}";\n`;
+      const prependedCode = bridgeImport + (webComponentRegistrations ? webComponentRegistrations + "\n" : "") + code;
+
+      return { code: prependedCode };
+    },
     transformIndexHtml(html: string) {
+      if (transformModule) return html;
+
       // Only inject bridge script during development
       if (!isDevMode) {
         return html;
       }
 
-      const consoleCaptureScript = `<script>
+      const consoleCaptureScript = disableConsoleCapture ? '' : `<script>
 (function() {
   if (typeof window === "undefined") return;
-  if (!window.__mcpConsoleMessages) {
-    window.__mcpConsoleMessages = [];
+  if (window.__mcpConsoleCaptureInitialized) return;
+  window.__mcpConsoleCaptureInitialized = true;
+  
+  if (!window.__mcpConsoleEntries) {
+    window.__mcpConsoleEntries = [];
   }
-  var consoleMessages = window.__mcpConsoleMessages;
-  var captureMessage = function(type, args) {
+  var consoleEntries = window.__mcpConsoleEntries;
+  var captureEntry = function(level, args) {
     try {
-      var message = Array.prototype.map.call(args, function(arg) {
-        if (arg === null) return "null";
-        if (arg === undefined) return "undefined";
-        if (typeof arg === "object") {
-          try {
-            return JSON.stringify(arg);
-          } catch (e) {
-            return String(arg);
-          }
-        }
-        return String(arg);
-      }).join(" ");
-      consoleMessages.push({ type: type, message: message, timestamp: Date.now() });
-      if (consoleMessages.length > 1000) consoleMessages.shift();
+      var entryArgs = Array.prototype.slice.call(args);
+      consoleEntries.push({ 
+        level: level, 
+        args: entryArgs, 
+        timestamp: Date.now() 
+      });
+      if (consoleEntries.length > 1000) consoleEntries.shift();
     } catch (e) {
     }
   };
   var wrapConsoleMethod = function(method) {
+    if (!console[method]) return;
     var original = console[method];
     if (original && !original.__mcpWrapped) {
-      console[method] = function() {
-        captureMessage(method, arguments);
+      var wrapped = function() {
+        captureEntry(method, arguments);
         return original.apply(console, arguments);
       };
-      console[method].__mcpWrapped = true;
+      try {
+        Object.defineProperty(wrapped, 'name', { 
+          value: original.name || method, 
+          configurable: true
+        });
+        if (original.toString) {
+          Object.defineProperty(wrapped, 'toString', { 
+            value: function() { return original.toString(); },
+            configurable: true
+          });
+        }
+        Object.defineProperty(wrapped, 'length', {
+          value: original.length || 0,
+          configurable: true
+        });
+      } catch (e) {
+      }
+      try {
+        var proto = Object.getPrototypeOf(original);
+        if (proto) {
+          Object.setPrototypeOf(wrapped, proto);
+        }
+      } catch (e) {
+      }
+      try {
+        Object.defineProperty(console, method, {
+          value: wrapped,
+          writable: true,
+          configurable: true,
+          enumerable: true
+        });
+        Object.defineProperty(console[method], '__mcpWrapped', {
+          value: true,
+          configurable: true,
+          enumerable: false,
+          writable: false
+        });
+      } catch (e) {
+        console[method] = wrapped;
+        console[method].__mcpWrapped = true;
+      }
     }
   };
   var methods = ["log", "info", "warn", "error", "debug"];
-  for (var i = 0; i < methods.length; i++) {
-    wrapConsoleMethod(methods[i]);
-  }
+  setTimeout(function() {
+    for (var i = 0; i < methods.length; i++) {
+      wrapConsoleMethod(methods[i]);
+    }
+  }, 0);
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function() {
       for (var i = 0; i < methods.length; i++) {
