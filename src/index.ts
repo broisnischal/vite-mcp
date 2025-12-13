@@ -21,6 +21,7 @@ import { Deferred } from "./utils.js";
 import { mcpBridge } from "./bridge/bridge.js";
 import packageJson from "../package.json" with { type: "json" };
 import { z } from "zod";
+import ansis from "ansis";
 
 if (typeof z === "undefined") {
   throw new Error("zod is not available. Please ensure zod is installed.");
@@ -109,7 +110,7 @@ export interface ViteMcpOptions<
 }
 
 function log(message: string) {
-  console.log(`[vite-mcp] ${message}`);
+  console.log(ansis.gray("[vite-mcp]"), message);
 }
 
 function registerAndAppendWebComponent(
@@ -483,6 +484,7 @@ export function viteMcp<
       deferred.promise.finally(() => clearTimeout(timeout));
 
       if (!viteServer?.ws) {
+        console.log(ansis.gray("[vite-mcp]"), ansis.yellow("Bridge: Bridge not ready because HMR not available."));
         pendingToolCalls.delete(id);
         const errorResult: CallToolResult = {
           content: [
@@ -501,6 +503,7 @@ export function viteMcp<
         const clientCount = viteServer.ws.clients.size;
 
         if (clientCount === 0) {
+          console.log(ansis.gray("[vite-mcp]"), ansis.yellow("Bridge: Bridge not ready because HMR not available."));
           pendingToolCalls.delete(id);
           const errorResult: CallToolResult = {
             content: [
@@ -847,8 +850,6 @@ export function viteMcp<
 
       if (!transformModule.test(id)) return;
 
-      log(`Transforming module ${id}`);
-
       const bridgeImport = `import "${VIRTUAL_MCP_ID}";\n`;
       const prependedCode = bridgeImport + (webComponentRegistrations ? webComponentRegistrations + "\n" : "") + code;
 
@@ -968,7 +969,7 @@ export function viteMcp<
       viteServer = server;
 
       server.ws.on("mcp:bridge-ready", () => {
-        log("Bridge ready!");
+        console.log(ansis.gray("[vite-mcp]"), ansis.green.bold("Bridge ready!"));
       });
 
       server.ws.on(

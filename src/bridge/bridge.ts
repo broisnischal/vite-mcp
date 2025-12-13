@@ -38,11 +38,10 @@ export function mcpBridge(
   }
 
   if (!hot) {
-    log("Bridge not ready because HMR not available.");
     return;
   }
 
-  log("Bridge ready!");
+  console.log("[vite-mcp] Bridge ready!");
 
   hot.send("mcp:bridge-ready");
 
