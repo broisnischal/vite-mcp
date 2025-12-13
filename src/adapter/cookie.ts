@@ -41,141 +41,12 @@ const cookieAdapterInputSchema = z.object({
   ]).optional().describe("SameSite attribute"),
 });
 
-const cookieAdapterOutputSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("read"),
-    cookies: z.array(cookieDetailSchema).describe("Array of detailed cookie information"),
-  }),
-  z.object({
-    action: z.literal("get"),
-    cookie: cookieDetailSchema.nullable().describe("Cookie details or null if not found"),
-  }),
-  z.object({
-    action: z.literal("set"),
-    success: z.boolean().describe("Whether the cookie was set successfully"),
-    cookie: cookieDetailSchema.optional().describe("The cookie that was set"),
-  }),
-  z.object({
-    action: z.literal("edit"),
-    success: z.boolean().describe("Whether the cookie was edited successfully"),
-    cookie: cookieDetailSchema.optional().describe("The updated cookie"),
-  }),
-  z.object({
-    action: z.literal("remove"),
-    success: z.boolean().describe("Whether the cookie was removed successfully"),
-  }),
-]);
-
-interface CookieDetails {
-  name: string;
-  value: string;
-  size: number;
-  domain: string;
-  path: string;
-  secure: boolean;
-  httpOnly: boolean;
-  sameSite?: string | undefined;
-  hostOnly: boolean;
-  session: boolean;
-}
-
-function getCookieDetails(name: string): CookieDetails | null {
-  const cookies = document.cookie.split(";");
-  for (const cookie of cookies) {
-    const [cookieName, ...valueParts] = cookie.trim().split("=");
-    if (cookieName?.trim() === name) {
-      const value = valueParts.join("=").trim();
-      const details: CookieDetails = {
-        name: name,
-        value: value,
-        size: (name + "=" + value).length,
-        domain: window.location.hostname,
-        path: "/",
-        secure: window.location.protocol === "https:",
-        httpOnly: false,
-        hostOnly: true,
-        session: true,
-      };
-      return details;
-    }
-  }
-  return null;
-}
-
-function getAllCookiesWithDetails(): CookieDetails[] {
-  const cookies: CookieDetails[] = [];
-  const cookieString = document.cookie;
-
-  if (!cookieString) {
-    return cookies;
-  }
-
-  const cookieParts = cookieString.split(";");
-  for (const cookie of cookieParts) {
-    const [name, ...valueParts] = cookie.trim().split("=");
-    if (name) {
-      const value = valueParts.join("=").trim();
-      const cookieDetail: CookieDetails = {
-        name: name.trim(),
-        value: value,
-        domain: window.location.hostname,
-        path: "/",
-        secure: window.location.protocol === "https:",
-        httpOnly: false,
-        hostOnly: true,
-        session: true,
-        size: (name.trim() + "=" + value).length,
-      };
-      cookies.push(cookieDetail);
-    }
-  }
-
-  return cookies;
-}
-
-function setCookieWithOptions(
-  name: string,
-  value: string,
-  options: {
-    path?: string;
-    domain?: string;
-    expires?: number;
-    maxAge?: number;
-    secure?: boolean;
-    sameSite?: string;
-  } = {}
-): CookieDetails | null {
-  let cookieString = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
-
-  if (options.path) {
-    cookieString += `; path=${options.path}`;
-  } else {
-    cookieString += `; path=/`;
-  }
-
-  if (options.domain) {
-    cookieString += `; domain=${options.domain}`;
-  }
-
-  if (options.expires) {
-    const expiresDate = new Date(options.expires);
-    cookieString += `; expires=${expiresDate.toUTCString()}`;
-  } else if (options.maxAge !== undefined) {
-    cookieString += `; max-age=${options.maxAge}`;
-  }
-
-  if (options.secure) {
-    cookieString += `; secure`;
-  }
-
-  if (options.sameSite) {
-    cookieString += `; samesite=${options.sameSite}`;
-  }
-
-  document.cookie = cookieString;
-
-  return getCookieDetails(name);
-}
+const cookieAdapterOutputSchema = z.object({
+  action: z.enum(["read", "get", "set", "edit", "remove"]).describe("The action that was performed"),
+  success: z.boolean().optional().describe("Whether the action was successful"),
+  cookies: z.array(cookieDetailSchema).optional().describe("Array of detailed cookie information (for read action)"),
+  cookie: cookieDetailSchema.nullable().optional().describe("Cookie details (for get, set, edit actions)"),
+});
 
 export const cookieAdapter: AdapterDefinition = {
   name: "cookie",
@@ -204,6 +75,117 @@ export const cookieAdapter: AdapterDefinition = {
         ],
         isError: true,
       };
+    }
+
+    interface CookieDetails {
+      name: string;
+      value: string;
+      size: number;
+      domain: string;
+      path: string;
+      secure: boolean;
+      httpOnly: boolean;
+      sameSite?: string | undefined;
+      hostOnly: boolean;
+      session: boolean;
+    }
+
+    function getCookieDetails(name: string): CookieDetails | null {
+      const cookies = document.cookie.split(";");
+      for (const cookie of cookies) {
+        const [cookieName, ...valueParts] = cookie.trim().split("=");
+        if (cookieName?.trim() === name) {
+          const value = valueParts.join("=").trim();
+          const details: CookieDetails = {
+            name: name,
+            value: value,
+            size: (name + "=" + value).length,
+            domain: window.location.hostname,
+            path: "/",
+            secure: window.location.protocol === "https:",
+            httpOnly: false,
+            hostOnly: true,
+            session: true,
+          };
+          return details;
+        }
+      }
+      return null;
+    }
+
+    function getAllCookiesWithDetails(): CookieDetails[] {
+      const cookies: CookieDetails[] = [];
+      const cookieString = document.cookie;
+
+      if (!cookieString) {
+        return cookies;
+      }
+
+      const cookieParts = cookieString.split(";");
+      for (const cookie of cookieParts) {
+        const [name, ...valueParts] = cookie.trim().split("=");
+        if (name) {
+          const value = valueParts.join("=").trim();
+          const cookieDetail: CookieDetails = {
+            name: name.trim(),
+            value: value,
+            domain: window.location.hostname,
+            path: "/",
+            secure: window.location.protocol === "https:",
+            httpOnly: false,
+            hostOnly: true,
+            session: true,
+            size: (name.trim() + "=" + value).length,
+          };
+          cookies.push(cookieDetail);
+        }
+      }
+
+      return cookies;
+    }
+
+    function setCookieWithOptions(
+      name: string,
+      value: string,
+      options: {
+        path?: string;
+        domain?: string;
+        expires?: number;
+        maxAge?: number;
+        secure?: boolean;
+        sameSite?: string;
+      } = {}
+    ): CookieDetails | null {
+      let cookieString = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
+
+      if (options.path) {
+        cookieString += `; path=${options.path}`;
+      } else {
+        cookieString += `; path=/`;
+      }
+
+      if (options.domain) {
+        cookieString += `; domain=${options.domain}`;
+      }
+
+      if (options.expires) {
+        const expiresDate = new Date(options.expires);
+        cookieString += `; expires=${expiresDate.toUTCString()}`;
+      } else if (options.maxAge !== undefined) {
+        cookieString += `; max-age=${options.maxAge}`;
+      }
+
+      if (options.secure) {
+        cookieString += `; secure`;
+      }
+
+      if (options.sameSite) {
+        cookieString += `; samesite=${options.sameSite}`;
+      }
+
+      document.cookie = cookieString;
+
+      return getCookieDetails(name);
     }
 
     try {
@@ -263,7 +245,7 @@ export const cookieAdapter: AdapterDefinition = {
           result = {
             action: "set",
             success: true,
-            cookie: cookie,
+            cookie: cookie || null,
           };
           break;
         }
@@ -324,7 +306,7 @@ export const cookieAdapter: AdapterDefinition = {
           result = {
             action: "edit",
             success: true,
-            cookie: cookie,
+            cookie: cookie || null,
           };
           break;
         }

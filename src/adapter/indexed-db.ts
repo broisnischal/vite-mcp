@@ -19,76 +19,39 @@ const indexedDBAdapterInputSchema = z.object({
   value: z.any().optional().describe("Value to store (required for set_entry)"),
 });
 
-const indexedDBAdapterOutputSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("list_databases"),
-    databases: z
-      .array(
-        z.object({
-          name: z.string().describe("Database name"),
-          version: z.number().describe("Database version"),
-        })
-      )
-      .describe("Array of IndexedDB databases"),
-    count: z.number().describe("Number of databases"),
-  }),
-  z.object({
-    action: z.literal("get_database_info"),
-    name: z.string().describe("Database name"),
-    version: z.number().describe("Database version"),
-    objectStores: z
-      .array(
-        z.object({
-          name: z.string().describe("Object store name"),
-          keyPath: z.string().nullable().describe("Key path"),
-          autoIncrement: z.boolean().describe("Whether auto-increment is enabled"),
-        })
-      )
-      .describe("Array of object stores"),
-    found: z.boolean().describe("Whether the database was found"),
-  }),
-  z.object({
-    action: z.literal("get_keys"),
-    keys: z.array(z.any()).describe("Array of keys in the object store"),
-    databaseName: z.string().describe("Name of the database"),
-    objectStoreName: z.string().describe("Name of the object store"),
-    count: z.number().describe("Number of keys"),
-  }),
-  z.object({
-    action: z.literal("get_entry"),
-    found: z.boolean().describe("Whether the entry was found"),
-    key: z.any().describe("The key that was requested"),
-    value: z.any().nullable().describe("The value or null if not found"),
-    databaseName: z.string().describe("Name of the database"),
-    objectStoreName: z.string().describe("Name of the object store"),
-  }),
-  z.object({
-    action: z.literal("set_entry"),
-    success: z.boolean().describe("Whether the entry was set successfully"),
-    key: z.any().describe("The key that was set"),
-    databaseName: z.string().describe("Name of the database"),
-    objectStoreName: z.string().describe("Name of the object store"),
-  }),
-  z.object({
-    action: z.literal("delete_entry"),
-    success: z.boolean().describe("Whether the entry was deleted successfully"),
-    key: z.any().describe("The key that was deleted"),
-    databaseName: z.string().describe("Name of the database"),
-    objectStoreName: z.string().describe("Name of the object store"),
-  }),
-  z.object({
-    action: z.literal("clear_object_store"),
-    success: z.boolean().describe("Whether the object store was cleared successfully"),
-    databaseName: z.string().describe("Name of the database"),
-    objectStoreName: z.string().describe("Name of the object store"),
-    deletedCount: z.number().optional().describe("Number of entries deleted (if available)"),
-  }),
-  z.object({
-    action: z.literal("delete_database"),
-    success: z.boolean().describe("Whether the database was deleted successfully"),
-    databaseName: z.string().describe("Name of the database that was deleted"),
-  }),
-]);
+const indexedDBAdapterOutputSchema = z.object({
+  action: z.enum(["list_databases", "get_database_info", "get_keys", "get_entry", "set_entry", "delete_entry", "clear_object_store", "delete_database"]).describe("The action that was performed"),
+  success: z.boolean().optional().describe("Whether the action was successful"),
+  databases: z
+    .array(
+      z.object({
+        name: z.string().describe("Database name"),
+        version: z.number().describe("Database version"),
+      })
+    )
+    .optional()
+    .describe("Array of IndexedDB databases (for list_databases action)"),
+  count: z.number().optional().describe("Number of databases or keys"),
+  name: z.string().optional().describe("Database name (for get_database_info action)"),
+  version: z.number().optional().describe("Database version (for get_database_info action)"),
+  objectStores: z
+    .array(
+      z.object({
+        name: z.string().describe("Object store name"),
+        keyPath: z.string().nullable().describe("Key path"),
+        autoIncrement: z.boolean().describe("Whether auto-increment is enabled"),
+      })
+    )
+    .optional()
+    .describe("Array of object stores (for get_database_info action)"),
+  found: z.boolean().optional().describe("Whether the database or entry was found"),
+  keys: z.array(z.any()).optional().describe("Array of keys in the object store (for get_keys action)"),
+  databaseName: z.string().optional().describe("Name of the database"),
+  objectStoreName: z.string().optional().describe("Name of the object store"),
+  key: z.any().optional().describe("The key that was used"),
+  value: z.any().nullable().optional().describe("The value (for get_entry action)"),
+  deletedCount: z.number().optional().describe("Number of entries deleted (for clear_object_store action)"),
+});
 
 export const indexedDBAdapter: AdapterDefinition = {
   name: "indexed_db",

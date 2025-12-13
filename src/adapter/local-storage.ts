@@ -15,52 +15,25 @@ const localStorageAdapterInputSchema = z.object({
   value: z.string().optional().describe("Storage value (required for set, edit)"),
 });
 
-const localStorageAdapterOutputSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("read"),
-    items: z
-      .array(
-        z.object({
-          key: z.string().describe("Storage key"),
-          value: z.string().describe("Storage value"),
-          size: z.number().optional().describe("Size in bytes"),
-        })
-      )
-      .describe("Array of localStorage items"),
-    totalSize: z.number().optional().describe("Total size of all items in bytes"),
-    itemCount: z.number().describe("Number of items in localStorage"),
-  }),
-  z.object({
-    action: z.literal("get"),
-    value: z.string().nullable().describe("Storage value or null if not found"),
-    key: z.string().describe("The key that was requested"),
-    size: z.number().optional().describe("Size in bytes"),
-  }),
-  z.object({
-    action: z.literal("set"),
-    success: z.boolean().describe("Whether the item was set successfully"),
-    key: z.string().describe("The key that was set"),
-    value: z.string().describe("The value that was set"),
-    size: z.number().optional().describe("Size in bytes"),
-  }),
-  z.object({
-    action: z.literal("edit"),
-    success: z.boolean().describe("Whether the item was edited successfully"),
-    key: z.string().describe("The key that was edited"),
-    value: z.string().describe("The new value"),
-    size: z.number().optional().describe("Size in bytes"),
-  }),
-  z.object({
-    action: z.literal("remove"),
-    success: z.boolean().describe("Whether the item was removed successfully"),
-    key: z.string().describe("The key that was removed"),
-  }),
-  z.object({
-    action: z.literal("clear"),
-    success: z.boolean().describe("Whether localStorage was cleared successfully"),
-    itemCount: z.number().describe("Number of items that were cleared"),
-  }),
-]);
+const localStorageAdapterOutputSchema = z.object({
+  action: z.enum(["read", "get", "set", "edit", "remove", "clear"]).describe("The action that was performed"),
+  success: z.boolean().optional().describe("Whether the action was successful"),
+  items: z
+    .array(
+      z.object({
+        key: z.string().describe("Storage key"),
+        value: z.string().describe("Storage value"),
+        size: z.number().optional().describe("Size in bytes"),
+      })
+    )
+    .optional()
+    .describe("Array of localStorage items (for read action)"),
+  totalSize: z.number().optional().describe("Total size of all items in bytes (for read action)"),
+  itemCount: z.number().optional().describe("Number of items (for read and clear actions)"),
+  value: z.string().nullable().optional().describe("Storage value (for get action)"),
+  key: z.string().optional().describe("The key that was used"),
+  size: z.number().optional().describe("Size in bytes (for get, set, edit actions)"),
+});
 
 export const localStorageAdapter: AdapterDefinition = {
   name: "local_storage",

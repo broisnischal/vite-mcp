@@ -14,6 +14,7 @@ import {
   performanceMetricsAdapter,
   cacheAdapter,
   indexedDBAdapter,
+  testSimpleAdapter,
 } from "./adapter/index.js";
 import type { AdapterDefinition } from "./adapter/types.js";
 import { Deferred } from "./utils.js";
@@ -135,6 +136,7 @@ function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
     componentTreeAdapter,
     componentRoutesAdapter,
     performanceMetricsAdapter,
+    testSimpleAdapter,
   ];
 
   const defaultConfig: Required<ViteMcpAdapterConfig> = {
@@ -306,17 +308,29 @@ export function viteMcp<
             ) {
               try {
                 const parsed = JSON.parse(result.content[0].text);
-                if (adapter.outputSchema) {
-                  const validated = adapter.outputSchema.parse(parsed);
-                  return {
-                    structuredContent: validated as Record<string, unknown>,
-                    content: [
-                      {
-                        type: "text",
-                        text: JSON.stringify(validated),
-                      },
-                    ],
-                  };
+                if (adapter.outputSchema && typeof adapter.outputSchema.parse === "function") {
+                  try {
+                    const validated = adapter.outputSchema.parse(parsed);
+                    return {
+                      structuredContent: validated as Record<string, unknown>,
+                      content: [
+                        {
+                          type: "text",
+                          text: JSON.stringify(validated),
+                        },
+                      ],
+                    };
+                  } catch (parseError) {
+                    log(`Output schema validation failed for ${adapter.name}, returning unvalidated result: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+                    return {
+                      content: [
+                        {
+                          type: "text",
+                          text: JSON.stringify(parsed),
+                        },
+                      ],
+                    };
+                  }
                 }
                 return {
                   content: [
@@ -620,6 +634,7 @@ export function viteMcp<
       });
 
       const mcpServer = createMcpServer();
+      mcpServer.markInitialized();
 
       server.middlewares.use(async (req: any, res: any, next: any) => {
         try {
@@ -632,6 +647,8 @@ export function viteMcp<
             pathname === `${MCP_JSONRPC_PATH}/` ||
             pathname === MCP_SSE_PATH ||
             pathname === `${MCP_SSE_PATH}/` ||
+            pathname === `${MCP_PATH}/health` ||
+            pathname === `${MCP_PATH}/health/` ||
             pathname.startsWith(`${MCP_PATH}/`)
           ) {
             await mcpServer.handleHTTP(req, res);
