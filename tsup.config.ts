@@ -11,7 +11,8 @@ export default defineConfig([
     sourcemap: true,
     clean: true,
     treeshake: true,
-    external: ["vite"],
+    minify: true,
+    external: ["vite", "zod", "@modelcontextprotocol/sdk", "zod-to-json-schema"],
     outDir: "dist",
     onSuccess: async () => {
       // Copy browser-bridge.ts to dist directory
@@ -70,6 +71,8 @@ declare module "virtual:mcp" {
     splitting: false,
     sourcemap: true,
     treeshake: true,
+    minify: true,
+    external: ["zod", "@modelcontextprotocol/sdk"],
     outDir: "dist/adapters",
   },
   {
@@ -80,8 +83,9 @@ declare module "virtual:mcp" {
     sourcemap: true,
     treeshake: true,
     bundle: true,
+    minify: true,
+    external: ["@modelcontextprotocol/sdk"],
     outDir: "dist/bridge",
-    external: [],
     onSuccess: async () => {
       console.log("✓ Built bridge/index.js");
     },

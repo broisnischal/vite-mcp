@@ -18,9 +18,9 @@ import {
 import type { AdapterDefinition } from "./adapter/types.js";
 import { Deferred } from "./utils.js";
 import { mcpBridge } from "./bridge/bridge.js";
-import packageJson from "../package.json" with { type: "json" };
 import { z } from "zod";
-import ansis from "ansis";
+
+const PACKAGE_VERSION = "0.1.2";
 
 if (typeof z === "undefined") {
   throw new Error("zod is not available. Please ensure zod is installed.");
@@ -109,7 +109,7 @@ export interface ViteMcpOptions<
 }
 
 function log(message: string) {
-  console.log(ansis.gray("[vite-mcp]"), message);
+  console.log("[vite-mcp]", message);
 }
 
 function registerAndAppendWebComponent(
@@ -528,7 +528,7 @@ export function viteMcp<
       deferred.promise.finally(() => clearTimeout(timeout));
 
       if (!viteServer?.ws) {
-        console.log(ansis.gray("[vite-mcp]"), ansis.yellow("Bridge: Bridge not ready because HMR not available."));
+        console.log("[vite-mcp]", "Bridge: Bridge not ready because HMR not available.");
         pendingToolCalls.delete(id);
         const errorResult: CallToolResult = {
           content: [
@@ -547,7 +547,7 @@ export function viteMcp<
         const clientCount = viteServer.ws.clients.size;
 
         if (clientCount === 0) {
-          console.log(ansis.gray("[vite-mcp]"), ansis.yellow("Bridge: Bridge not ready because HMR not available."));
+          console.log("[vite-mcp]", "Bridge: Bridge not ready because HMR not available.");
           pendingToolCalls.delete(id);
           const errorResult: CallToolResult = {
             content: [
@@ -599,7 +599,7 @@ export function viteMcp<
   const createMcpServer = () => {
     const server = new ViteMcpServer({
       name: "vite-mcp",
-      version: packageJson.version || "0.0.2",
+      version: PACKAGE_VERSION,
       adapters: Array.from(adapters),
     });
 
@@ -1013,7 +1013,7 @@ export function viteMcp<
       viteServer = server;
 
       server.ws.on("mcp:bridge-ready", () => {
-        console.log(ansis.gray("[vite-mcp]"), ansis.green.bold("Bridge ready!"));
+        console.log("[vite-mcp]", "Bridge ready!");
       });
 
       server.ws.on(
