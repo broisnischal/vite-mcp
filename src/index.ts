@@ -271,7 +271,12 @@ function restrictAdapter(
     }
   }
 
-  const restrictedHandler = async (params?: { [key: string]: unknown }): Promise<CallToolResult> => {
+  const allowedActionsJson = JSON.stringify(allowedActions);
+  const adapterNameJson = JSON.stringify(adapter.name);
+  const originalHandlerCode = adapter.handler.toString();
+  const adapterServerJson = JSON.stringify(adapter.server || {});
+
+  const restrictedHandler = async function (params?: { [key: string]: unknown }): Promise<CallToolResult> {
     const action = params?.["action"] as string | undefined;
 
     if (!action) {
@@ -303,6 +308,47 @@ function restrictAdapter(
     }
 
     return await adapter.handler.call({ server: adapter.server || {} }, params);
+  };
+
+  restrictedHandler.toString = function () {
+    return `async function(params) {
+  const allowedActions = ${allowedActionsJson};
+  const adapterName = ${adapterNameJson};
+  const originalHandler = ${originalHandlerCode};
+  const adapterServer = ${adapterServerJson};
+  
+  const action = params?.["action"];
+  
+  if (!action) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "Missing required parameter 'action' for " + adapterName + " adapter",
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+  
+  if (!allowedActions.includes(action)) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: "Action '" + action + "' is not allowed for " + adapterName + " adapter with current permissions. Allowed actions: " + allowedActions.join(", "),
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+  
+  return await originalHandler.call({ server: adapterServer }, params);
+}`;
   };
 
   const result: AdapterDefinition = {

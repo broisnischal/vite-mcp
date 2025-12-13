@@ -11,6 +11,7 @@ interface ConsoleEntry {
 }
 
 export const consoleAdapterInputSchema = z.object({
+  type: z.enum(["log", "warn", "error", "info", "debug"]).optional().describe("Filter logs by level"),
   tail: z
     .coerce
     .number()
@@ -36,7 +37,7 @@ export const consoleAdapter: AdapterDefinition = {
   description: "Read the console log",
   inputSchema: consoleAdapterInputSchema,
   outputSchema: consoleAdapterOutputSchema,
-  handler: async function (params?: { tail?: number }): Promise<CallToolResult> {
+  handler: async function (params?: { type?: ConsoleLevel; tail?: number }): Promise<CallToolResult> {
     if (typeof window === "undefined") {
       return {
         structuredContent: { logs: [] },
@@ -52,6 +53,11 @@ export const consoleAdapter: AdapterDefinition = {
     try {
       const entries = ((window as any).__mcpConsoleEntries || []) as ConsoleEntry[];
       let logs = [...entries];
+
+      const filterType = params?.type;
+      if (filterType !== undefined) {
+        logs = logs.filter(entry => entry.level === filterType);
+      }
 
       const tail = params?.tail;
       if (tail !== undefined) {
