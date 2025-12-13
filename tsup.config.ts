@@ -12,7 +12,7 @@ export default defineConfig([
     clean: true,
     treeshake: true,
     minify: true,
-    external: ["vite", "zod", "@modelcontextprotocol/sdk", "zod-to-json-schema"],
+    external: ["vite", "zod", "@modelcontextprotocol/sdk"],
     outDir: "dist",
     onSuccess: async () => {
       // Copy browser-bridge.ts to dist directory

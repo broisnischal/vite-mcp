@@ -44,8 +44,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
-    "zod": "^4.1.13",
-    "zod-to-json-schema": "^3.25.0"
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
