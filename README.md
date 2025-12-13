@@ -77,8 +77,12 @@ The plugin automatically injects the bridge script for simple HTML files. For fr
 
 ```typescript
 // In your app entry point (e.g., main.tsx, entry.client.tsx, etc.)
-import "/virtual:mcp"; or import "virtual:mcp";
+import "/virtual:mcp";
+// OR
+import "virtual:mcp";
 ```
+
+Both import styles work. The module initializes the browser bridge automatically when imported.
 
 **TypeScript Support**
 

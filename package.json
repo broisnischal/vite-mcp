@@ -1,7 +1,7 @@
 {
   "name": "vite-mcp",
   "version": "0.1.2",
-  "description": "MCP server for Vite development, gives your agent actual eyes inside the browser via adapters.",
+  "description": "Vite plugin providing Model Context Protocol (MCP) server for browser development. Enables MCP clients to interact with browser environments through adapters for console, cookies, storage, and gives your agent actual eyes inside the browser via adapters",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -44,16 +44,19 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
-    "zod": "^4.1.13"
+    "zod": "^4.1.13",
+    "zod-to-json-schema": "^3.25.0"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
     "@types/bun": "latest",
     "@types/node": "^24.3.0",
+    "@vitest/ui": "^4.0.15",
     "tsup": "^8.5.1",
     "tsx": "^4.19.2",
     "typescript": "^5.9.0-beta",
-    "vite": "^7.2.7"
+    "vite": "^7.2.7",
+    "vitest": "^4.0.15"
   },
   "publishConfig": {
     "access": "public"
@@ -61,13 +64,28 @@
   "private": false,
   "keywords": [
     "mcp",
+    "model-context-protocol",
+    "mcp-server",
     "vite",
+    "vite-plugin",
+    "vite-plugin-mcp",
     "browser",
     "development",
+    "devtools",
     "tools",
-    "vite plugin",
-    "vite mcp",
-    "vite mcp adapters"
+    "adapter",
+    "adapters",
+    "console",
+    "cookies",
+    "localstorage",
+    "sessionstorage",
+    "hmr",
+    "hot-module-replacement",
+    "browser-bridge",
+    "ai",
+    "agent",
+    "claude",
+    "anthropic"
   ],
   "author": {
     "name": "Nischal Dahal",

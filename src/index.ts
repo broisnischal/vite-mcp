@@ -7,44 +7,22 @@ import { ViteMcpServer } from "./server.js";
 import {
   consoleAdapter,
   cookieAdapter,
-  getCookieAdapter,
-  setCookieAdapter,
-  editCookieAdapter,
-  removeCookieAdapter,
   localStorageAdapter,
-  getLocalStorageAdapter,
-  setLocalStorageAdapter,
-  editLocalStorageAdapter,
-  removeLocalStorageAdapter,
-  clearLocalStorageAdapter,
-  sessionAdapter,
-  getSessionStorageAdapter,
-  setSessionStorageAdapter,
-  editSessionStorageAdapter,
-  removeSessionStorageAdapter,
-  clearSessionStorageAdapter,
+  sessionStorageAdapter,
   componentTreeAdapter,
   componentRoutesAdapter,
   performanceMetricsAdapter,
-  listCachesAdapter,
-  getCacheKeysAdapter,
-  getCacheEntryAdapter,
-  setCacheEntryAdapter,
-  deleteCacheEntryAdapter,
-  deleteCacheAdapter,
-  clearCacheAdapter,
-  listIndexedDBDatabasesAdapter,
-  getIndexedDBDatabaseInfoAdapter,
-  getIndexedDBKeysAdapter,
-  getIndexedDBEntryAdapter,
-  setIndexedDBEntryAdapter,
-  deleteIndexedDBEntryAdapter,
-  clearIndexedDBObjectStoreAdapter,
-  deleteIndexedDBDatabaseAdapter,
+  cacheAdapter,
+  indexedDBAdapter,
 } from "./adapter/index.js";
 import type { AdapterDefinition } from "./adapter/types.js";
 import { Deferred } from "./utils.js";
 import packageJson from "../package.json" with { type: "json" };
+import { z } from "zod";
+
+if (typeof z === "undefined") {
+  throw new Error("zod is not available. Please ensure zod is installed.");
+}
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const SRC_DIR = __dirname;
@@ -54,6 +32,8 @@ const BRIDGE_PATH = "/@vite-mcp/bridge.js";
 const VIRTUAL_MCP_ID = "virtual:mcp";
 const RESOLVED_BRIDGE_ID = "\0vite-mcp-bridge";
 const MCP_PATH = "/__mcp";
+const MCP_JSONRPC_PATH = "/_mcp";
+const MCP_SSE_PATH = "/__mcp/sse";
 
 export interface ViteMcpAdapterConfig {
   cookies?: {
@@ -88,14 +68,12 @@ export interface ViteMcpAdapterConfig {
   };
 }
 
-// Type helpers for conditional adapter config
-// Map adapter name to config key
 type AdapterNameToConfigKey<T extends string> =
-  T extends `${string}cookie${string}` ? 'cookies' :
-  T extends `${string}local_storage${string}` ? 'localStorage' :
-  T extends `${string}session_storage${string}` ? 'sessionStorage' :
-  T extends `${string}cache${string}` ? 'cache' :
-  T extends `${string}indexed_db${string}` ? 'indexedDB' :
+  T extends "cookie" ? 'cookies' :
+  T extends "local_storage" ? 'localStorage' :
+  T extends "session_storage" ? 'sessionStorage' :
+  T extends "cache" ? 'cache' :
+  T extends "indexed_db" ? 'indexedDB' :
   never;
 
 // Get all config keys from adapters (as a union)
@@ -108,7 +86,6 @@ type GetConfigKeysUnion<T extends readonly AdapterDefinition[]> =
   : never
   : never
   : never;
-
 // Get unique config keys and build conditional config type
 type ConditionalAdapterConfig<
   TAdapters extends readonly AdapterDefinition[] | undefined
@@ -147,7 +124,6 @@ function registerAndAppendWebComponent(
   );
 }
 
-// Helper function to build adapters based on configuration
 function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
   const adapters: AdapterDefinition[] = [
     consoleAdapter,
@@ -156,7 +132,6 @@ function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
     performanceMetricsAdapter,
   ];
 
-  // Default: all features enabled
   const defaultConfig: Required<ViteMcpAdapterConfig> = {
     cookies: { enabled: true, read: true, write: true, delete: true },
     localStorage: { enabled: true, read: true, write: true, delete: true },
@@ -173,86 +148,24 @@ function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
     indexedDB: { ...defaultConfig.indexedDB, ...(config?.indexedDB || {}) },
   };
 
-  // Cookie adapters
   if (finalConfig.cookies.enabled !== false) {
-    if (finalConfig.cookies.read !== false) {
-      adapters.push(cookieAdapter, getCookieAdapter);
-    }
-    if (finalConfig.cookies.write !== false) {
-      adapters.push(setCookieAdapter, editCookieAdapter);
-    }
-    if (finalConfig.cookies.delete !== false) {
-      adapters.push(removeCookieAdapter);
-    }
+    adapters.push(cookieAdapter);
   }
 
-  // LocalStorage adapters
   if (finalConfig.localStorage.enabled !== false) {
-    if (finalConfig.localStorage.read !== false) {
-      adapters.push(localStorageAdapter, getLocalStorageAdapter);
-    }
-    if (finalConfig.localStorage.write !== false) {
-      adapters.push(setLocalStorageAdapter, editLocalStorageAdapter);
-    }
-    if (finalConfig.localStorage.delete !== false) {
-      adapters.push(removeLocalStorageAdapter, clearLocalStorageAdapter);
-    }
+    adapters.push(localStorageAdapter);
   }
 
-  // SessionStorage adapters
   if (finalConfig.sessionStorage.enabled !== false) {
-    if (finalConfig.sessionStorage.read !== false) {
-      adapters.push(sessionAdapter, getSessionStorageAdapter);
-    }
-    if (finalConfig.sessionStorage.write !== false) {
-      adapters.push(setSessionStorageAdapter, editSessionStorageAdapter);
-    }
-    if (finalConfig.sessionStorage.delete !== false) {
-      adapters.push(removeSessionStorageAdapter, clearSessionStorageAdapter);
-    }
+    adapters.push(sessionStorageAdapter);
   }
 
-  // Cache adapters
   if (finalConfig.cache.enabled !== false) {
-    if (finalConfig.cache.read !== false) {
-      adapters.push(
-        listCachesAdapter,
-        getCacheKeysAdapter,
-        getCacheEntryAdapter
-      );
-    }
-    if (finalConfig.cache.write !== false) {
-      adapters.push(setCacheEntryAdapter);
-    }
-    if (finalConfig.cache.delete !== false) {
-      adapters.push(
-        deleteCacheEntryAdapter,
-        deleteCacheAdapter,
-        clearCacheAdapter
-      );
-    }
+    adapters.push(cacheAdapter);
   }
 
-  // IndexedDB adapters
   if (finalConfig.indexedDB.enabled !== false) {
-    if (finalConfig.indexedDB.read !== false) {
-      adapters.push(
-        listIndexedDBDatabasesAdapter,
-        getIndexedDBDatabaseInfoAdapter,
-        getIndexedDBKeysAdapter,
-        getIndexedDBEntryAdapter
-      );
-    }
-    if (finalConfig.indexedDB.write !== false) {
-      adapters.push(setIndexedDBEntryAdapter);
-    }
-    if (finalConfig.indexedDB.delete !== false) {
-      adapters.push(
-        deleteIndexedDBEntryAdapter,
-        clearIndexedDBObjectStoreAdapter,
-        deleteIndexedDBDatabaseAdapter
-      );
-    }
+    adapters.push(indexedDBAdapter);
   }
 
   return adapters;
@@ -270,6 +183,7 @@ export function viteMcp<
 
   // Cache bridge code to avoid repeated file I/O
   let cachedBridgeCode: string | null = null;
+  let isDevMode = false;
 
   async function dispatchToolCall(
     name: string,
@@ -284,11 +198,16 @@ export function viteMcp<
         const pending = pendingToolCalls.get(id);
         if (pending) {
           pendingToolCalls.delete(id);
-          pending.reject(
-            new Error(
-              "Tool call timeout: Browser bridge may not be ready. Make sure the browser page is open and the dev server is running."
-            )
-          );
+          const errorResult: CallToolResult = {
+            content: [
+              {
+                type: "text",
+                text: "Tool call timeout: Browser bridge may not be ready. Make sure the browser page is open and the dev server is running.",
+              },
+            ],
+            isError: true,
+          };
+          pending.resolve(errorResult);
         }
       }, 60000);
 
@@ -296,11 +215,16 @@ export function viteMcp<
 
       if (!viteServer?.ws) {
         pendingToolCalls.delete(id);
-        deferred.reject(
-          new Error(
-            "Vite WebSocket server is not available. Make sure the dev server is running."
-          )
-        );
+        const errorResult: CallToolResult = {
+          content: [
+            {
+              type: "text",
+              text: "Vite WebSocket server is not available. Make sure the dev server is running.",
+            },
+          ],
+          isError: true,
+        };
+        deferred.resolve(errorResult);
         return deferred.promise;
       }
 
@@ -309,21 +233,36 @@ export function viteMcp<
 
         if (clientCount === 0) {
           pendingToolCalls.delete(id);
-          deferred.reject(
-            new Error(
-              "No WebSocket clients connected. Make sure the browser page is open and the dev server is running."
-            )
-          );
+          const errorResult: CallToolResult = {
+            content: [
+              {
+                type: "text",
+                text: "No WebSocket clients connected. Make sure the browser page is open and the dev server is running.",
+              },
+            ],
+            isError: true,
+          };
+          deferred.resolve(errorResult);
           return deferred.promise;
         }
 
         const payload = { id, name, params: params || {} };
+        if (!params || typeof params !== 'object') {
+          console.warn(`[vite-mcp] Invalid params for tool ${name}:`, params);
+        }
         (viteServer.ws as any).send("mcp:tool-call", payload);
       } catch (error) {
         pendingToolCalls.delete(id);
-        deferred.reject(
-          error instanceof Error ? error : new Error(String(error))
-        );
+        const errorResult: CallToolResult = {
+          content: [
+            {
+              type: "text",
+              text: error instanceof Error ? error.message : String(error),
+            },
+          ],
+          isError: true,
+        };
+        deferred.resolve(errorResult);
       }
 
       return deferred.promise;
@@ -353,23 +292,7 @@ export function viteMcp<
         adapter,
         async (input: { [key: string]: unknown }) => {
           try {
-            let validatedInput: { [key: string]: unknown };
-            try {
-              validatedInput = adapter.inputSchema.parse(input) as {
-                [key: string]: unknown;
-              };
-            } catch (validationError) {
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: validationError instanceof Error ? validationError.message : String(validationError),
-                  },
-                ],
-                isError: true,
-              };
-            }
-            const result = await dispatchToolCall(adapter.name, validatedInput);
+            const result = await dispatchToolCall(adapter.name, input);
 
             if (
               result.content &&
@@ -435,10 +358,13 @@ export function viteMcp<
 
   return {
     name: "vite-mcp",
-    apply: "serve",
     enforce: "pre",
+    configResolved(config) {
+      isDevMode = config.mode === "development";
+    },
     resolveId(id: string) {
       const normalizedId = id.split("?")[0];
+
       if (
         normalizedId === VIRTUAL_MCP_ID ||
         normalizedId === "/virtual:mcp" ||
@@ -452,10 +378,31 @@ export function viteMcp<
       if (id === RESOLVED_BRIDGE_ID || id === RESOLVED_BRIDGE_ID + ".ts") {
         return RESOLVED_BRIDGE_ID + ".ts";
       }
+
+      // Resolve bridge/index.js imports from browser-bridge.ts
+      // Handle both absolute and relative paths
+      if (id === "/bridge/index.js" || id === "./bridge/index.js" || id === "../bridge/index.js" || id.includes("bridge/index")) {
+        const distBridgeIndex = join(DIST_DIR, "bridge", "index.js");
+        const srcBridgeIndex = join(SRC_DIR, "bridge", "index.ts");
+
+        // Prefer compiled version from dist, fallback to source
+        if (existsSync(distBridgeIndex)) {
+          return distBridgeIndex;
+        }
+        if (existsSync(srcBridgeIndex)) {
+          return srcBridgeIndex;
+        }
+      }
+
       return undefined;
     },
     load(id: string) {
       if (id === RESOLVED_BRIDGE_ID + ".ts") {
+        // During build, return empty module to prevent any code from being bundled
+        if (!isDevMode) {
+          return "";
+        }
+
         // Use cached bridge code if available
         if (cachedBridgeCode !== null) {
           return cachedBridgeCode;
@@ -468,10 +415,15 @@ export function viteMcp<
           : srcBridgePath;
 
         if (existsSync(bridgePath)) {
-          const bridgeCode = readFileSync(bridgePath, "utf-8");
+          let bridgeCode = readFileSync(bridgePath, "utf-8");
+
+          // Strip TypeScript-specific syntax that causes parse errors
+          // Replace type assertions and type-only syntax with JavaScript-compatible code
+          bridgeCode = bridgeCode.replace(/\((\w+)\s+as\s+\w+\)/g, "$1");
+          bridgeCode = bridgeCode.replace(/\/\/\s*@ts-ignore.*\n/g, "");
+
           const fullCode = bridgeCode +
             (webComponentRegistrations ? `\n${webComponentRegistrations}` : "");
-          // Cache the result
           cachedBridgeCode = fullCode;
           return fullCode;
         }
@@ -479,16 +431,73 @@ export function viteMcp<
       return undefined;
     },
     transformIndexHtml(html: string) {
+      // Only inject bridge script during development
+      if (!isDevMode) {
+        return html;
+      }
+
+      const consoleCaptureScript = `<script>
+(function() {
+  if (typeof window === "undefined") return;
+  if (!window.__mcpConsoleMessages) {
+    window.__mcpConsoleMessages = [];
+  }
+  var consoleMessages = window.__mcpConsoleMessages;
+  var captureMessage = function(type, args) {
+    try {
+      var message = Array.prototype.map.call(args, function(arg) {
+        if (arg === null) return "null";
+        if (arg === undefined) return "undefined";
+        if (typeof arg === "object") {
+          try {
+            return JSON.stringify(arg);
+          } catch (e) {
+            return String(arg);
+          }
+        }
+        return String(arg);
+      }).join(" ");
+      consoleMessages.push({ type: type, message: message, timestamp: Date.now() });
+      if (consoleMessages.length > 1000) consoleMessages.shift();
+    } catch (e) {
+    }
+  };
+  var wrapConsoleMethod = function(method) {
+    var original = console[method];
+    if (original && !original.__mcpWrapped) {
+      console[method] = function() {
+        captureMessage(method, arguments);
+        return original.apply(console, arguments);
+      };
+      console[method].__mcpWrapped = true;
+    }
+  };
+  var methods = ["log", "info", "warn", "error", "debug"];
+  for (var i = 0; i < methods.length; i++) {
+    wrapConsoleMethod(methods[i]);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function() {
+      for (var i = 0; i < methods.length; i++) {
+        wrapConsoleMethod(methods[i]);
+      }
+    });
+  }
+})();
+</script>`;
+
       const bridgeScript = `<script type="module" src="/virtual:mcp"></script>`;
+
+      if (html.includes("<head>")) {
+        return html.replace("<head>", `<head>${consoleCaptureScript}${bridgeScript}`);
+      }
       if (html.includes("</head>")) {
-        return html.replace("</head>", `${bridgeScript}</head>`);
-      } else if (html.includes("<head>")) {
-        return html.replace("<head>", `<head>${bridgeScript}`);
+        return html.replace("</head>", `${consoleCaptureScript}${bridgeScript}</head>`);
       }
       if (html.includes("<body>")) {
-        return html.replace("<body>", `<body>${bridgeScript}`);
+        return html.replace("<body>", `<body>${consoleCaptureScript}${bridgeScript}`);
       }
-      return bridgeScript + html;
+      return consoleCaptureScript + bridgeScript + html;
     },
     configureServer(server: ViteDevServer) {
       viteServer = server;
@@ -527,6 +536,10 @@ export function viteMcp<
           if (
             pathname === MCP_PATH ||
             pathname === `${MCP_PATH}/` ||
+            pathname === MCP_JSONRPC_PATH ||
+            pathname === `${MCP_JSONRPC_PATH}/` ||
+            pathname === MCP_SSE_PATH ||
+            pathname === `${MCP_SSE_PATH}/` ||
             pathname.startsWith(`${MCP_PATH}/`)
           ) {
             await mcpServer.handleHTTP(req, res);
@@ -536,8 +549,7 @@ export function viteMcp<
         } catch (error) {
           log(`Error in middleware: ${error instanceof Error ? error.message : String(error)}`);
           if (!res.headersSent) {
-            res.writeHead(500);
-            res.setHeader("Content-Type", "application/json");
+            res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({
               error: "Internal server error",
               message: error instanceof Error ? error.message : String(error)
