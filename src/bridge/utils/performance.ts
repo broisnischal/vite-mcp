@@ -75,7 +75,7 @@ export async function getPerformanceMetrics(options: {
       if (perfEntries.length > 0) {
         const navEntry = perfEntries[0] as PerformanceNavigationTiming;
         const ttfb = navEntry.responseStart - navEntry.requestStart;
-        webVitals.ttfb = {
+        webVitals["ttfb"] = {
           value: ttfb,
           rating: getWebVitalsRating(ttfb, { good: 200, poor: 500 }),
         };
@@ -88,7 +88,7 @@ export async function getPerformanceMetrics(options: {
       const paintEntries = performance.getEntriesByType("paint") as PerformancePaintTiming[];
       const fcpEntry = paintEntries.find((entry) => entry.name === "first-contentful-paint");
       if (fcpEntry) {
-        webVitals.fcp = {
+        webVitals["fcp"] = {
           value: fcpEntry.startTime,
           rating: getWebVitalsRating(fcpEntry.startTime, { good: 1800, poor: 3000 }),
         };
@@ -101,7 +101,7 @@ export async function getPerformanceMetrics(options: {
       const lcpEntries = performance.getEntriesByType("largest-contentful-paint") as PerformanceEntry[];
       if (lcpEntries.length > 0) {
         const lcpEntry = lcpEntries[lcpEntries.length - 1] as any;
-        webVitals.lcp = {
+        webVitals["lcp"] = {
           value: lcpEntry.renderTime || lcpEntry.loadTime,
           rating: getWebVitalsRating(lcpEntry.renderTime || lcpEntry.loadTime, { good: 2500, poor: 4000 }),
         };
@@ -114,9 +114,9 @@ export async function getPerformanceMetrics(options: {
       const fidEntries = performance.getEntriesByType("first-input") as PerformanceEventTiming[];
       if (fidEntries.length > 0) {
         const fidEntry = fidEntries[0];
-        webVitals.fid = {
-          value: fidEntry.processingStart - fidEntry.startTime,
-          rating: getWebVitalsRating(fidEntry.processingStart - fidEntry.startTime, { good: 100, poor: 300 }),
+        webVitals["fid"] = {
+          value: (fidEntry?.processingStart ?? 0) - (fidEntry?.startTime ?? 0),
+          rating: getWebVitalsRating((fidEntry?.processingStart ?? 0) - (fidEntry?.startTime ?? 0), { good: 100, poor: 300 }),
         };
       }
     } catch (e) {
@@ -132,7 +132,7 @@ export async function getPerformanceMetrics(options: {
             clsValue += entry.value;
           }
         });
-        webVitals.cls = {
+        webVitals["cls"] = {
           value: clsValue,
           rating: getWebVitalsRating(clsValue, { good: 0.1, poor: 0.25 }),
         };
@@ -151,9 +151,9 @@ export async function getPerformanceMetrics(options: {
       const navTiming = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
       if (navTiming) {
         result.navigationTiming = {
-          navigationStart: navTiming.navigationStart,
-          unloadEventStart: navTiming.unloadEventStart,
-          unloadEventEnd: navTiming.unloadEventEnd,
+          navigationStart: (navTiming as any).navigationStart ?? 0,
+          unloadEventStart: navTiming.unloadEventStart ?? 0,
+          unloadEventEnd: navTiming.unloadEventEnd ?? 0,
           redirectStart: navTiming.redirectStart,
           redirectEnd: navTiming.redirectEnd,
           fetchStart: navTiming.fetchStart,
@@ -165,7 +165,7 @@ export async function getPerformanceMetrics(options: {
           requestStart: navTiming.requestStart,
           responseStart: navTiming.responseStart,
           responseEnd: navTiming.responseEnd,
-          domLoading: navTiming.domLoading,
+          domLoading: (navTiming as any).domLoading ?? 0,
           domInteractive: navTiming.domInteractive,
           domContentLoadedEventStart: navTiming.domContentLoadedEventStart,
           domContentLoadedEventEnd: navTiming.domContentLoadedEventEnd,

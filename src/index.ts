@@ -10,7 +10,6 @@ import {
   localStorageAdapter,
   sessionStorageAdapter,
   componentTreeAdapter,
-  componentRoutesAdapter,
   performanceMetricsAdapter,
   cacheAdapter,
   indexedDBAdapter,
@@ -369,7 +368,6 @@ function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
   const adapters: AdapterDefinition[] = [
     consoleAdapter,
     componentTreeAdapter,
-    componentRoutesAdapter,
     performanceMetricsAdapter,
     testSimpleAdapter,
   ];
