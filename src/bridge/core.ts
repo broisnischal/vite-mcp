@@ -6,6 +6,7 @@ import {
   SessionStorageBridge,
   CacheBridge,
   IndexedDBBridge,
+  PerformanceBridge,
   // ComponentRoutesBridge,
 } from "./adapters/index.js";
 
@@ -25,6 +26,7 @@ export class BrowserBridge {
     this.adapters.set("session_storage", new SessionStorageBridge());
     this.adapters.set("cache", new CacheBridge());
     this.adapters.set("indexed_db", new IndexedDBBridge());
+    this.adapters.set("performance", new PerformanceBridge());
     // this.adapters.set("read_component_routes", new ComponentRoutesBridge());
   }
 

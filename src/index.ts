@@ -12,6 +12,7 @@ import {
   cacheAdapter,
   indexedDBAdapter,
   testSimpleAdapter,
+  performanceAdapter,
 } from "./adapter/index.js";
 import type { AdapterDefinition } from "./adapter/types.js";
 import { Deferred } from "./utils.js";
@@ -366,6 +367,7 @@ function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
   const adapters: AdapterDefinition[] = [
     consoleAdapter,
     testSimpleAdapter,
+    performanceAdapter,
   ];
 
   const defaultConfig: Required<ViteMcpAdapterConfig> = {
