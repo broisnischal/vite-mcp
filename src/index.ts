@@ -9,8 +9,6 @@ import {
   cookieAdapter,
   localStorageAdapter,
   sessionStorageAdapter,
-  componentTreeAdapter,
-  performanceMetricsAdapter,
   cacheAdapter,
   indexedDBAdapter,
   testSimpleAdapter,
@@ -93,7 +91,7 @@ type ConditionalAdapterConfig<
   TAdapters extends readonly AdapterDefinition[] | undefined
 > = TAdapters extends readonly AdapterDefinition[]
   ? GetConfigKeysUnion<TAdapters> extends never
-  ? ViteMcpAdapterConfig // If no matching adapters, allow all config (for adapters like console, component-tree)
+  ? ViteMcpAdapterConfig // If no matching adapters, allow all config (for adapters like console)
   : Pick<ViteMcpAdapterConfig, GetConfigKeysUnion<TAdapters>>
   : ViteMcpAdapterConfig; // If adapters not provided, allow all config (buildAdapters will be used)
 
@@ -367,8 +365,6 @@ function restrictAdapter(
 function buildAdapters(config?: ViteMcpAdapterConfig): AdapterDefinition[] {
   const adapters: AdapterDefinition[] = [
     consoleAdapter,
-    componentTreeAdapter,
-    performanceMetricsAdapter,
     testSimpleAdapter,
   ];
 

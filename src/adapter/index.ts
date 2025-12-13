@@ -2,8 +2,6 @@ export { consoleAdapter } from "./console.js";
 export { cookieAdapter } from "./cookie.js";
 export { localStorageAdapter } from "./local-storage.js";
 export { sessionStorageAdapter } from "./session.js";
-export { componentTreeAdapter } from "./component-tree.js";
-export { performanceMetricsAdapter } from "./performance.js";
 export { cacheAdapter } from "./cache.js";
 export { indexedDBAdapter } from "./indexed-db.js";
 export { testSimpleAdapter } from "./test-simple.js";
