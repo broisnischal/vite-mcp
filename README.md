@@ -2,17 +2,9 @@
 
 A Vite plugin that provides Model Context Protocol (MCP) server capabilities for Vite development, enabling MCP clients to interact with browser environments through adapters.
 
-### WHY?
+### Why to use?
 
 This plugin gives your agent actual eyes inside the browser. Instead of working blind during Vite HMR, it can now see the UI, console, and page state in real time through MCP tools, and many more if you contribute!
-
-## Features
-
-- 🔌 **MCP Server Integration** - High-level McpServer API integration
-- 🎯 **Type-Safe Adapters** - Zod-validated adapters for browser APIs
-- 🚀 **Vite Plugin** - Seamless integration with Vite dev server
-- 📦 **Multiple Adapters** - Console, Cookies, LocalStorage, SessionStorage
-- 🔄 **Hot Module Replacement** - Real-time communication via Vite HMR
 
 ## Installation
 
@@ -45,7 +37,7 @@ export default defineConfig({
     viteMcp({
       adapters: [
         consoleAdapter,
-        // Add your custom adapters here
+        // Add your custom adapters here ( experimental )
       ],
     }),
   ],
@@ -59,84 +51,36 @@ import {
   consoleAdapter,
   cookieAdapter,
   localStorageAdapter,
-  sessionAdapter,
+  sessionStorageAdapter,
+  cacheAdapter,
+  indexedDBAdapter,
+  performanceAdapter,
+  componentTreeAdapter,
 } from "vite-mcp/adapters";
 ```
 
-### Framework Support (React Router, Remix, TanStack Start, etc.)
+### Framework Support
 
 The plugin automatically injects the bridge script for simple HTML files. For frameworks that generate HTML dynamically (React Router, Remix, TanStack Start, etc.), you need to manually include the virtual module in your app entry point.
 
-#### React Router / TanStack Router
+**Entry file locations by framework:**
 
-Add this to your root entry file (e.g., `src/main.tsx`, `src/entry.client.tsx`):
+- React Router / TanStack Router: `src/main.tsx` or `src/entry.client.tsx`
+- Remix: `app/entry.client.tsx`
+- TanStack Start: `src/entry-client.tsx`
+- Standard Vite (React/Vue/Svelte): `src/main.tsx`, `src/main.js`, or `App.vue` (optional, auto-injected)
+
+Add this at the **very top** of your entry file (before any other imports):
 
 ```typescript
+/// add reference only if the type throws, else fine! no need to reference
 /// <reference types="vite-mcp/vite-mcp-env" />
-import "/virtual:mcp";
-
-// Your other imports
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-// ...
+import "virtual:mcp";
 ```
-
-#### Remix
-
-Add this to your `app/entry.client.tsx` file (at the very top, before any other imports):
-
-```typescript
-/// <reference types="vite-mcp/vite-mcp-env" />
-import "/virtual:mcp";
-
-// Your other Remix imports
-import { RemixBrowser } from "@remix-run/react";
-// ...
-```
-
-#### TanStack Start
-
-Add this to your `src/entry-client.tsx` file:
-
-```typescript
-/// <reference types="vite-mcp/vite-mcp-env" />
-import "/virtual:mcp";
-
-// Your other TanStack Start imports
-// ...
-```
-
-#### Vite + React/Vue/Svelte (Standard)
-
-For standard Vite apps, the plugin automatically injects the script. If you're using a custom HTML template, you can also manually import:
-
-```typescript
-// In your main.tsx, main.js, or App.vue
-import "/virtual:mcp";
-```
-
-**Important Notes:**
-
-- The import must be at the **very top** of your entry file, before any console.log calls
-- The console capture script runs automatically when the module loads
-- Both `/virtual:mcp` and `virtual:mcp` import styles work
 
 **TypeScript Support**
 
-To fix TypeScript errors when importing `/virtual:mcp`, you have two options:
-
-**Option A: Add reference directive (Quick fix)**
-
-Add this at the top of your entry file (e.g., `main.tsx`, `entry.client.tsx`):
-
-```typescript
-/// <reference types="vite-mcp/vite-mcp-env" />
-import "/virtual:mcp";
-```
-
-**Option B: Add to tsconfig.json (Recommended for projects)**
-
-Add the types file to your `tsconfig.json`:
+To avoid the reference directive, add to `tsconfig.json`:
 
 ```json
 {
@@ -148,13 +92,37 @@ Add the types file to your `tsconfig.json`:
 }
 ```
 
-Then you can import without the reference directive:
+The virtual module will automatically initialize the browser bridge and connect to the MCP server via Vite's HMR WebSocket.
 
-```typescript
-import "/virtual:mcp";
+## Available Adapters
+
+- **consoleAdapter** - Read console messages from the browser
+- **cookieAdapter** - Read cookies from the browser
+- **localStorageAdapter** - Read localStorage items
+- **sessionStorageAdapter** - Read sessionStorage items
+- **cacheAdapter** - Manage Cache API (list, get/set/delete entries)
+- **indexedDBAdapter** - Manage IndexedDB (list databases, get/set/delete entries)
+- **performanceAdapter** - Get performance metrics (Web Vitals, navigation timing, resource timings)
+- **componentTreeAdapter** - Get component tree structure (React, Vue, Svelte) and route information
+- **contribute** - Contribute new adapters
+<!-- - **domAdapter** - Read DOM elements -->
+
+## MCP Endpoint
+
+The plugin exposes an MCP server at `/__mcp` endpoint as default. MCP clients can connect to this endpoint to interact with the browser environment.
+
+### MCP Server Configuration
+
+```json
+// .mcp.json
+{
+  "mcpServers": {
+    "vite-dev-mcp": {
+      "url": "http://localhost:5173/__mcp"
+    }
+  }
+}
 ```
-
-The virtual module `/virtual:mcp` will automatically initialize the browser bridge and connect to the MCP server via Vite's HMR WebSocket.
 
 ### Verifying Setup
 
@@ -176,41 +144,9 @@ To verify console messages are being captured:
 
 If `window.__mcpConsoleMessages` is undefined, the console capture script didn't run. Make sure:
 
-- The `/virtual:mcp` import is at the very top of your entry file
+- The `virtual:mcp` import is at the very top of your entry file
 - You're in development mode
 - The module loaded successfully (check for errors)
-
-## Available Adapters
-
-- **consoleAdapter** - Read console messages from the browser
-- **cookieAdapter** - Read cookies from the browser
-- **localStorageAdapter** - Read localStorage items
-- **sessionAdapter** - Read sessionStorage items
-- **contribute** - Contribute new adapters
-<!-- - **domAdapter** - Read DOM elements -->
-
-## MCP Endpoint
-
-The plugin exposes an MCP server at `/__mcp` endpoint. MCP clients can connect to this endpoint to interact with the browser environment.
-
-### MCP Server Configuration
-
-```json
-{
-  "mcpServers": {
-    "vite-dev-mcp": {
-      "url": "http://localhost:5173/__mcp"
-    }
-  }
-}
-```
-
-<!--
-Quick test:
-
-1. Start the playground: `cd playground && npm run dev`
-2. Open `http://localhost:5200` in a browser
-3. Run the test script: `npm run test:mcp` -->
 
 Or use online tools like [MCP Playground](https://mcpplaygroundonline.com) to test the MCP server at `http://localhost:(viteport)/__mcp`.
 
@@ -222,28 +158,27 @@ Or use online tools like [MCP Playground](https://mcpplaygroundonline.com) to te
 - [ ] **Network Logs**:  
        Capture and display all browser network requests and responses for advanced debugging and tracing (XHR, fetch, websockets, etc).
 
-- [ ] **Component Routes**:  
-       Visualize and inspect frontend routing, including mapping between components and their active routes.
+- [x] **Component Routes**:  
+       Visualize and inspect frontend routing, including mapping between components and their active routes (via `componentTreeAdapter`).
 
-- [ ] **Component Tree**:  
-       Display a live, interactive component tree for supported frameworks (React, Vue, etc) for better introspection and state tracing.
+- [x] **Component Tree**:  
+       Display a live, interactive component tree for supported frameworks (React, Vue, etc) for better introspection and state tracing (via `componentTreeAdapter`).
 
-- [ ] **Cached Storage**:  
-       List and inspect all cached data from browser cache storage APIs.
+- [x] **Cached Storage**:  
+       List and inspect all cached data from browser cache storage APIs (via `cacheAdapter`).
 
-- [ ] **IndexedDB Explorer**:  
-       Browse, query, and inspect all records/tables in the browser's IndexedDB databases.
+- [x] **IndexedDB Explorer**:  
+       Browse, query, and inspect all records/tables in the browser's IndexedDB databases (via `indexedDBAdapter`).
 
 - [ ] **Service Worker Monitoring**:
-- [ ] **Console/Log Filtering**:
-- [ ] **Performance Metrics**:  
-       Display core web vitals, page load timings, and real user metrics for performance analysis.
+- [x] **Console/Log Filtering**:
+- [x] **Performance Metrics**:  
+       Display core web vitals, page load timings, and real user metrics for performance analysis (via `performanceAdapter`).
 
-- [ ] **Screenshot/DOM Snapshots**:
 - [ ] **Remote Debugging Capabilities**:
 
 _If you have suggestions for more features or use-cases, please open an issue or discussion!_
 
-## License
+## License & Credits
 
-MIT
+This project is released under the [MIT License](LICENSE).
