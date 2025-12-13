@@ -8,7 +8,6 @@ import {
   IndexedDBBridge,
   PerformanceBridge,
   ComponentTreeBridge,
-  // ComponentRoutesBridge,
 } from "./adapters/index.js";
 
 export class BrowserBridge {
@@ -29,7 +28,6 @@ export class BrowserBridge {
     this.adapters.set("indexed_db", new IndexedDBBridge());
     this.adapters.set("performance", new PerformanceBridge());
     this.adapters.set("component-tree", new ComponentTreeBridge());
-    // this.adapters.set("read_component_routes", new ComponentRoutesBridge());
   }
 
   registerAdapter(name: string, bridge: AdapterBridge): void {
