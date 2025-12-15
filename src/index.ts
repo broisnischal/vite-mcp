@@ -1,4 +1,4 @@
-import type { Plugin, ViteDevServer } from "vite";
+import type { PluginOption, ViteDevServer } from "vite";
 import { existsSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
@@ -437,7 +437,7 @@ export function viteMcp<
   TAdapters extends readonly AdapterDefinition[] | undefined = AdapterDefinition[] | undefined
 >(
   options: ViteMcpOptions<TAdapters> = {} as ViteMcpOptions<TAdapters>
-): Plugin {
+): PluginOption {
   let adapters = options.adapters || buildAdapters(options.adapterConfig);
   const transformModule = options.transformModule;
   const disableConsoleCapture = options.disableConsoleCapture === true;
@@ -1114,7 +1114,7 @@ export function viteMcp<
   };
 }
 
-export default viteMcp;
-
 declare module "virtual:mcp" { }
+
+export default viteMcp;
 
