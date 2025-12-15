@@ -1,5 +1,11 @@
 # vite-mcp
 
+## 0.2.2
+
+### Patch Changes
+
+- 1573aa6: minor type safe fixes
+
 ## 0.2.1
 
 ### Patch Changes
