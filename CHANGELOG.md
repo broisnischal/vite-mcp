@@ -1,5 +1,11 @@
 # vite-mcp
 
+## 0.2.1
+
+### Patch Changes
+
+- 1a300a2: chore:: improve type imports
+
 ## 0.2.0
 
 ### Minor Changes
