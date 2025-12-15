@@ -8,7 +8,8 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "vite-mcp-env.d.ts"
+    "vite-mcp-env.d.ts",
+    "dist/browser-bridge.d.ts"
   ],
   "exports": {
     ".": {

@@ -1,5 +1,5 @@
 import { defineConfig } from "tsup";
-import { copyFileSync, existsSync, writeFileSync } from "fs";
+import { copyFileSync, existsSync, writeFileSync, readFileSync } from "fs";
 import { join } from "path";
 
 export default defineConfig([
@@ -38,30 +38,37 @@ export default defineConfig([
       }
       // Ensure vite-mcp-env.d.ts in root has the declaration (for package distribution)
       const envTypesPath = join(process.cwd(), "vite-mcp-env.d.ts");
-      const envTypesContent = `/**
- * Type helpers for vite-mcp's virtual modules.
- *
- * Add this file to your project so TypeScript can resolve the module signatures:
- *
- * tsconfig.json
- * {
- *   "compilerOptions": { ... },
- *   "include": [
- *     "node_modules/vite-mcp/vite-mcp-env.d.ts"
- *   ]
- * }
- *
- * Or place a reference directive at the top of your main entry:
- * /// <reference types="vite-mcp/vite-mcp-env" />
- */
-
-declare module "virtual:mcp" {
+      const envTypesContent = `declare module "virtual:mcp" {
   // The module doesn't export anything, it just initializes the bridge
-  // Import it for side effects only: import "/virtual:mcp" or import "virtual:mcp"
+  // Import it for side effects only: import "virtual:mcp"
 }
 `;
       writeFileSync(envTypesPath, envTypesContent, "utf-8");
       console.log("✓ Ensured vite-mcp-env.d.ts has virtual:mcp declaration");
+
+      // Also ensure dist/virtual-mcp.d.ts exists and is properly set up
+      // Use setTimeout to ensure DTS build completes first
+      setTimeout(() => {
+        const distVirtualMcpPath = join(process.cwd(), "dist", "virtual-mcp.d.ts");
+        const virtualMcpContent = `declare module "virtual:mcp" {
+  // The module doesn't export anything, it just initializes the bridge
+  // Import it for side effects only: import "virtual:mcp"
+}
+`;
+        writeFileSync(distVirtualMcpPath, virtualMcpContent, "utf-8");
+        console.log("✓ Ensured dist/virtual-mcp.d.ts has virtual:mcp declaration");
+
+        // Add reference directive to dist/index.d.ts to auto-include virtual:mcp types
+        const indexDtsPath = join(process.cwd(), "dist", "index.d.ts");
+        if (existsSync(indexDtsPath)) {
+          const indexDtsContent = readFileSync(indexDtsPath, "utf-8");
+          if (!indexDtsContent.includes('/// <reference types="vite-mcp/vite-mcp-env" />')) {
+            const updatedContent = `/// <reference types="vite-mcp/vite-mcp-env" />\n${indexDtsContent}`;
+            writeFileSync(indexDtsPath, updatedContent, "utf-8");
+            console.log("✓ Added reference directive to dist/index.d.ts");
+          }
+        }
+      }, 2000);
     },
   },
   {

@@ -16,6 +16,8 @@ import {
   componentTreeAdapter,
 } from "./adapter/index.js";
 import type { AdapterDefinition } from "./adapter/types.js";
+
+export type { AdapterDefinition };
 import { Deferred } from "./utils.js";
 import { mcpBridge } from "./bridge/bridge.js";
 import { z } from "zod";
@@ -1115,3 +1117,4 @@ export function viteMcp<
 export default viteMcp;
 
 declare module "virtual:mcp" { }
+

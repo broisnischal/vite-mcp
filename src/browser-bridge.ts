@@ -1,4 +1,3 @@
-/// <reference path="./browser-bridge.d.ts" />
 import { BrowserBridge } from "./bridge/index.js";
 
 if (typeof window !== "undefined") {
